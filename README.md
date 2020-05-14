@@ -20,8 +20,7 @@ Our data are provided by the Scripps Institute of Oceanography.
 
 ## Dataset preparation
 
-Since our goal is to work with ortho-mosaics, the input orthoimage, should be subdivided into sub-images (tiles) before to be used 
-for the training. Each tile is cropped to 513 x 513 and feed to the network. Hence the resolution of the input tiles should be greater than 513 x 513. The ground truth segmentation has to be provided as a color map with the same name of the corresponding image tile (24 bit, RGB) stored in a different folder.
+Since our goal is to work with ortho-mosaics, typically in the order of hundreds of MPixels, a subdivision of the input orthoimage into sub-images (tiles) is necessary. Each tile is cropped to 513 x 513 and feed to the network. Hence the resolution of the input tiles should be greater than 513 x 513. The ground truth segmentation has to be provided as a color map with the same name of the corresponding image tile (24 bit, RGB) stored in a different folder.
 
 For example:
 
@@ -37,7 +36,7 @@ dataset/label_tiles/tile0002.png
 ```
 
 To associate the class names with the labels color you need to modify `labelsdictionary.py`.
-The dataloader automatically performs all the operations on-the-fly required by the training (geometric augmentation, color augmentation, and cropping).
+The dataloader automatically performs on-the-fly all the operations required by the training (geometric augmentation, color augmentation, and cropping).
 
 ## Training
 
