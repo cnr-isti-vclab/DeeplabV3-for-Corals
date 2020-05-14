@@ -12,7 +12,22 @@ In particular, we re-implemented the [Generalized Dice Loss (GDL)](https://arxiv
 
 ## Requirements 
 
-requirement goes here..
+This code has been tested on Python 3.6 and with different versions of CUDA (both 9.2 and 10.0) and Pytorch (>= 1.2).
+
+| Module name  | Version |
+| ------------- | ------------- |
+| albumentations | 0.2.2 |
+| numpy | 1.16.4 |
+| opencv-python | 4.1.0.25 |
+| Pillow | 5.2.0 |
+| scikit-image | 0.15.0 |
+| scikit-learn | 0.21.2 |
+| scipy | 1.4.1 |
+| tensorboard | 2.1.1 |
+| tensorflow | 2.1.0 |
+| torch  | 1.5.0  |
+| torchvision | 0.6.0 |
+
 
 ## Dataset
 
