@@ -46,5 +46,5 @@ The training parameters (number of epochs, learning rate, etc.) and theirs descr
 
 ## Team
 
-Deeplab-for-Corals has been developed by Gaia Pavoni (gaia.pavoni@isti.cnr.it) and Massimiliano Corsini (massimiliano.corsini@isti.cnr.it). 
+DeeplabV3-for-Corals has been developed by Gaia Pavoni (gaia.pavoni@isti.cnr.it) and Massimiliano Corsini (massimiliano.corsini@isti.cnr.it). 
 Feel free to contact us for any inquiries about the project.
