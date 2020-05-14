@@ -8,6 +8,8 @@ Strong points:
 - Default hyperparameters works reasonably well in many different cases.
 - Minimal configuration for re-use.
 
+In particular, we re-implemented the [Generalized Dice Loss (GDL)](https://arxiv.org/abs/1707.03237) and the [Boundary Loss](https://github.com/LIVIAETS/surface-loss).
+
 ## Requirements 
 
 requirement goes here..
@@ -39,7 +41,7 @@ The dataloader automatically performs all the operations on-the-fly required by 
 
 ## Training
 
-The training parameters (number of epochs, learning rate, etc.) can be found at the beginning of the __main__ in `training.py`
+The training parameters (number of epochs, learning rate, etc.) and theirs description can be found at the beginning of the __main__ in `training.py`
 
 
 ## Team
