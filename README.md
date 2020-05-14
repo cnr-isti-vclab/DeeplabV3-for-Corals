@@ -64,6 +64,7 @@ The training parameters (number of epochs, learning rate, etc.) and theirs descr
 python training.py
 ```
 
+After the training, together with the network weights, also a configuration file is saved (in JSON format). This file is required to use the network later. Take a look at the __testNetwork__ function (in `training.py`) to load and use a previously trained network.
 
 ## Team
 
