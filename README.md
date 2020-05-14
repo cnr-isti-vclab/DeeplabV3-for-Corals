@@ -55,7 +55,7 @@ The dataloader automatically performs on-the-fly all the operations required by 
 
 ## Training
 
-Our training is based on fine-tuning the version of the DeepLab just mentioned. So, you need to download the pre-trained weights from here [Google Drive](https://drive.google.com/file/d/1i57CxuVgD1I0P5qI1gtUvKi45ymull_x/view?usp=sharing).
+Our training is based on fine-tuning the version of the DeepLab just mentioned. So, you need to download the pre-trained weights from [here](https://drive.google.com/file/d/1i57CxuVgD1I0P5qI1gtUvKi45ymull_x/view?usp=sharing).
 
 The training parameters (number of epochs, learning rate, etc.) and theirs description can be found at the beginning of the __main__ in `training.py` . After the settings are ready the training can be launched by simply:
 
