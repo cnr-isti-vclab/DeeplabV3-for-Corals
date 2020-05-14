@@ -62,7 +62,6 @@ The training parameters (number of epochs, learning rate, etc.) and theirs descr
 
  ```
 python training.py
-..
 ```
 
 
