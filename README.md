@@ -1,4 +1,4 @@
-# Deeplab-for-Corals
+# Corals Semantic Segmentation
 
 This code is part of a bigger project about the semantic segmentation of coral reefs for ecological monitoring. We use the DeepLab V3+ for the segmentation of ortho-mosaics and ortho-projections of seabed. The implementation of the Deeplab is based on the [pytorch-deeplab-xception](https://github.com/jfzhang95/pytorch-deeplab-xception) project.
 
