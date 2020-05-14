@@ -397,12 +397,12 @@ def main():
 
     lr = 0.00005                      # learning rate
     L2 = 0.0005                       # weight decay
-    NEPOCHS = 20                      # number of epochs
-    VAL_FREQ = 5                      # validation frequency
+    NEPOCHS = 90                      # number of epochs
+    VAL_FREQ = 2                      # validation frequency
     NCLASSES = 4                      # number of classes
     BATCH_SIZE = 4                    #
     BATCH_MULTIPLIER = 8              # batch size = BATCH_SIZE * BATCH_MULTIPLIER
-    EPOCH_GDL_BOUNDARY_SWITCH = 8     # number of epochs before to switch to the Boundary loss
+    EPOCH_GDL_BOUNDARY_SWITCH = 50    # number of epochs before to switch to the Boundary loss
     LOSS_TO_USE = "DICE+BOUNDARY"     # loss to use:
                                       #     "CROSSENTROPY"  -> Weighted Cross Entropy Loss
                                       #     "DICE"          -> Generalized Dice Loss (GDL)
@@ -416,25 +416,22 @@ def main():
     classifier_name = "GDL+B_90"
 
     ##### TRAINING
-    # trainingNetwork(images_dir_train, labels_dir_train, images_dir_val, labels_dir_val,
-    #                 dictionary, target_classes, num_classes=NCLASSES, save_network_as=network_name,
-    #                 save_classifier_as=save_classifier_as, classifier_name=classifier_name,
-    #                 epochs=NEPOCHS, batch_sz=BATCH_SIZE, batch_mult=BATCH_MULTIPLIER,
-    #                 validation_frequency=VAL_FREQ, loss_to_use="DICE+BOUNDARY", epochs_switch=EPOCH_GDL_BOUNDARY_SWITCH,
-    #                 learning_rate=lr, L2_penalty=L2, flagShuffle=True, experiment_name="_EXPERIMENT")
+    trainingNetwork(images_dir_train, labels_dir_train, images_dir_val, labels_dir_val,
+                    dictionary, target_classes, num_classes=NCLASSES, save_network_as=network_name,
+                    save_classifier_as=save_classifier_as, classifier_name=classifier_name,
+                    epochs=NEPOCHS, batch_sz=BATCH_SIZE, batch_mult=BATCH_MULTIPLIER,
+                    validation_frequency=VAL_FREQ, loss_to_use="DICE+BOUNDARY", epochs_switch=EPOCH_GDL_BOUNDARY_SWITCH,
+                    learning_rate=lr, L2_penalty=L2, flagShuffle=True, experiment_name="_EXPERIMENT")
 
     ##### TEST
 
-    images_dir_test = "D:\\SCRIPPS MAPS\\tiles\\HAW_2016\\test_img"
-    labels_dir_test= "D:\\SCRIPPS MAPS\\tiles\\HAW_2016\\test_labels"
-    output_folder = "C:\\pytorch\\pytorch-deeplab-xception\\DeeplabV3+Corals\\temp"
+    # images_dir_test = "D:\\SCRIPPS MAPS\\tiles\\HAW_2016\\test_img"
+    # labels_dir_test= "D:\\SCRIPPS MAPS\\tiles\\HAW_2016\\test_labels"
+    # output_folder = "C:\\pytorch\\pytorch-deeplab-xception\\DeeplabV3+Corals\\temp"
+    #
+    # testNetwork(images_dir_test, labels_dir_test, dictionary, "scripps-classifier.json",
+    #             "DEEPLAB_lr=5e-05_L2=0.0005GDL+B_90.net", output_folder)
 
-    testNetwork(images_dir_test, labels_dir_test, dictionary, "scripps-classifier.json",
-                "DEEPLAB_lr=5e-05_L2=0.0005GDL+B_90.net", output_folder)
-
-
-    #images_dir = "D:\\SCRIPPS\\RightArea"
-    #classifyImages(images_dir, "DEEPLAB_lr=5e-05_L2=0.0005_150_ADAMTEST2.net", "D:\\SCRIPPS\\RightAreaSeg")
 
 if __name__ == '__main__':
     main()
