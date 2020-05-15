@@ -257,8 +257,7 @@ def trainingNetwork(images_folder_train, labels_folder_train, images_folder_val,
     best_jaccard_score = 0.0
 
     # weights for GENERALIZED DICE LOSS
-    weights = datasetTrain.weights[1:]
-    freq = 1.0 / weights
+    freq = 1.0 / datasetTrain.weights[1:]
     w = 1.0 / (freq * freq)
     w = w / w.sum() + 0.00001
     w_for_GDL = torch.from_numpy(w)
@@ -285,18 +284,18 @@ def trainingNetwork(images_folder_train, labels_folder_train, images_folder_val,
             if loss_to_use == "CROSSENTROPY":
                 loss = lossfn(outputs, labels_batch)
             elif loss_to_use == "DICE":
-                loss = losses.generalized_dice_loss(outputs, labels_batch, w_for_GDL)
+                loss = losses.GDL(outputs, labels_batch, w_for_GDL)
             elif loss_to_use == "BOUNDARY":
                 loss = losses.surface_loss(labels_batch, outputs)
             elif loss_to_use == "DICE+BOUNDARY":
 
                 if epoch < epochs_switch:
-                    loss = losses.generalized_dice_loss(outputs, labels_batch, w_for_GDL)
+                    loss = losses.GDL(outputs, labels_batch, w_for_GDL)
                 else:
                     alpha = 1.0 - (epoch-epochs_switch) / 10.0
                     if alpha < 0.0:
                         alpha = 0.0
-                    loss = alpha * losses.dice_loss(outputs, labels_batch) + (1.0 - alpha) * 0.3 * losses.surface_loss(labels_batch, outputs)
+                    loss = alpha * losses.GDL(outputs, labels_batch, w_for_GDL) + (1.0 - alpha) * 0.3 * losses.surface_loss(labels_batch, outputs)
 
             loss.backward()
 
@@ -397,19 +396,19 @@ def main():
 
     lr = 0.00005                      # learning rate
     L2 = 0.0005                       # weight decay
-    NEPOCHS = 90                      # number of epochs
-    VAL_FREQ = 2                      # validation frequency
+    NEPOCHS = 80                      # number of epochs
+    VAL_FREQ = 5                      # validation frequency
     NCLASSES = 4                      # number of classes
     BATCH_SIZE = 4                    #
     BATCH_MULTIPLIER = 8              # batch size = BATCH_SIZE * BATCH_MULTIPLIER
-    EPOCH_GDL_BOUNDARY_SWITCH = 50    # number of epochs before to switch to the Boundary loss
-    LOSS_TO_USE = "DICE+BOUNDARY"     # loss to use:
+    EPOCH_GDL_BOUNDARY_SWITCH = 8     # number of epochs before to switch to the Boundary loss
+    LOSS_TO_USE = "CROSSENTROPY"      # loss to use:
                                       #     "CROSSENTROPY"  -> Weighted Cross Entropy Loss
                                       #     "DICE"          -> Generalized Dice Loss (GDL)
                                       #     "BOUNDARY"      -> Boundary Loss
                                       #     "DICE+BOUNDARY" -> GDL, then Boundary Loss
 
-    network_name = "DEEPLAB_lr=" + str(lr) + "_L2=" + str(L2) + "GDL+B_90"
+    network_name = "DEEPLAB_lr=" + str(lr) + "_L2=" + str(L2) + "GDL+B_20"
     network_name = network_name + ".net"
 
     save_classifier_as = "scripps-classifier-GDL+B_90.json"

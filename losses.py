@@ -62,46 +62,47 @@ def make_one_hot(labels, C=2):
     return target
 
 
-def dice_loss(input, target):
+# def dice_loss(input, target):
+#
+#     """
+#
+#     :param input: input is a torch variable of size Batch x nclasses x H x W representing log probabilities for each class
+#     :param target:  target is a 1-hot representation of the groundtruth, shoud have same size as the input
+#     :return: Dice loss
+#
+#     """
+#
+#     # input: torch.Tensor,
+#     # target: torch.Tensor -> torch.Tensor
+#
+#
+#     nclasses = input.shape[1]
+#
+#     input = torch.softmax(input, axis=1)
+#     target_onehot = make_one_hot(target, nclasses)
+#
+#     # exclude Background (assumed = 0)
+#     input_no_back = input[:, 1:, ...]
+#     target_onehot_no_back = target_onehot[:, 1:, ...]
+#
+#     #input_no_back = input_no_back.view(-1)
+#     #target_onehot_no_back = target_onehot_no_back.view(-1)
+#
+#     smooth = 1.0
+#     intersection = (input_no_back * target_onehot_no_back).sum()
+#     L = 1.0 - ((2.0 * intersection) + smooth) / (input_no_back.sum() + target_onehot_no_back.sum() + smooth)
+#
+#     return L
+
+
+def GDL(input, target, weights):
 
     """
+    Generalized Dice Loss
 
     :param input: input is a torch variable of size Batch x nclasses x H x W representing log probabilities for each class
     :param target:  target is a 1-hot representation of the groundtruth, shoud have same size as the input
-    :return: Dice loss
-
-    """
-
-    # input: torch.Tensor,
-    # target: torch.Tensor -> torch.Tensor
-
-
-    nclasses = input.shape[1]
-
-    input = torch.softmax(input, axis=1)
-    target_onehot = make_one_hot(target, nclasses)
-
-    # exclude Background (assumed = 0)
-    input_no_back = input[:, 1:, ...]
-    target_onehot_no_back = target_onehot[:, 1:, ...]
-
-    #input_no_back = input_no_back.view(-1)
-    #target_onehot_no_back = target_onehot_no_back.view(-1)
-
-    smooth = 1.0
-    intersection = (input_no_back * target_onehot_no_back).sum()
-    L = 1.0 - ((2.0 * intersection) + smooth) / (input_no_back.sum() + target_onehot_no_back.sum() + smooth)
-
-    return L
-
-
-def generalized_dice_loss(input, target, weights):
-
-    """
-
-    :param input: input is a torch variable of size Batch x nclasses x H x W representing log probabilities for each class
-    :param target:  target is a 1-hot representation of the groundtruth, shoud have same size as the input
-    :return: Dice loss
+    :return: Generalized dice loss
 
     """
 
