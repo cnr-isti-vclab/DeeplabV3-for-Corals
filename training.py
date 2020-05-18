@@ -401,7 +401,7 @@ def main():
     L2 = 0.0005                       # weight decay
     NEPOCHS = 80                      # number of epochs
     VAL_FREQ = 1                      # validation frequency
-    NCLASSES = 4                      # number of classes
+    NCLASSES = len(target_classes)    # number of classes
     BATCH_SIZE = 4                    #
     BATCH_MULTIPLIER = 8              # batch size = BATCH_SIZE * BATCH_MULTIPLIER
     EPOCH_GDL_BOUNDARY_SWITCH = 8     # number of epochs before to switch to the Boundary loss
