@@ -385,7 +385,7 @@ def main():
                       "Porite_massive": 2,
                       "Montipora_plate/flabellata": 3,
                       "Montipora_crust/patula": 4,
-                      "Montipora capitata": 5
+                      "Montipora_capitata": 5
                       }
 
 
