@@ -383,21 +383,24 @@ def main():
     target_classes = {"Background": 0,
                       "Pocillopora": 1,
                       "Porite_massive": 2,
-                      "Montipora_crust/patula": 3}
+                      "Montipora_plate/flabellata": 3,
+                      "Montipora_crust/patula": 4,
+                      "Montipora capitata": 5
+                      }
 
 
     ##### TRAINING SETTINGS
 
-    images_dir_train = "D:\\SCRIPPS MAPS\\tiles\\HAW_2016\\img"
-    labels_dir_train = "D:\\SCRIPPS MAPS\\tiles\\HAW_2016\\labels"
+    images_dir_train = "D:\\ten-orthos-scripps\\train_im"
+    labels_dir_train = "D:\\ten-orthos-scripps\\train_lab"
 
-    images_dir_val = "D:\\SCRIPPS MAPS\\tiles\\HAW_2016\\val_img"
-    labels_dir_val = "D:\\SCRIPPS MAPS\\tiles\\HAW_2016\\val_labels"
+    images_dir_val = "D:\\ten-orthos-scripps\\val_im"
+    labels_dir_val = "D:\\ten-orthos-scripps\\val_lab"
 
     lr = 0.00005                      # learning rate
     L2 = 0.0005                       # weight decay
     NEPOCHS = 80                      # number of epochs
-    VAL_FREQ = 5                      # validation frequency
+    VAL_FREQ = 1                      # validation frequency
     NCLASSES = 4                      # number of classes
     BATCH_SIZE = 4                    #
     BATCH_MULTIPLIER = 8              # batch size = BATCH_SIZE * BATCH_MULTIPLIER
@@ -408,7 +411,7 @@ def main():
                                       #     "BOUNDARY"      -> Boundary Loss
                                       #     "DICE+BOUNDARY" -> GDL, then Boundary Loss
 
-    network_name = "DEEPLAB_lr=" + str(lr) + "_L2=" + str(L2) + "GDL+B_20"
+    network_name = "DEEPLAB_lr=" + str(lr) + "_L2=" + str(L2) + "CROSS80"
     network_name = network_name + ".net"
 
     save_classifier_as = "scripps-classifier-GDL+B_90.json"
@@ -419,7 +422,7 @@ def main():
                     dictionary, target_classes, num_classes=NCLASSES, save_network_as=network_name,
                     save_classifier_as=save_classifier_as, classifier_name=classifier_name,
                     epochs=NEPOCHS, batch_sz=BATCH_SIZE, batch_mult=BATCH_MULTIPLIER,
-                    validation_frequency=VAL_FREQ, loss_to_use="DICE+BOUNDARY", epochs_switch=EPOCH_GDL_BOUNDARY_SWITCH,
+                    validation_frequency=VAL_FREQ, loss_to_use=LOSS_TO_USE, epochs_switch=EPOCH_GDL_BOUNDARY_SWITCH,
                     learning_rate=lr, L2_penalty=L2, flagShuffle=True, experiment_name="_EXPERIMENT")
 
     ##### TEST
