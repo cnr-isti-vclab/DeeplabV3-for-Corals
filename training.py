@@ -182,8 +182,8 @@ def writeClassifierInfo(filename, classifier_name, dataset):
 
 def trainingNetwork(images_folder_train, labels_folder_train, images_folder_val, labels_folder_val,
                     dictionary, target_classes, num_classes, save_network_as, save_classifier_as, classifier_name,
-                    epochs, batch_sz, batch_mult, learning_rate, L2_penalty, validation_frequency, loss_to_use, epochs_switch,
-                    flagShuffle, experiment_name):
+                    epochs, batch_sz, batch_mult, learning_rate, L2_penalty, validation_frequency, loss_to_use,
+                    epochs_switch, epoch_transition, flagShuffle, experiment_name):
 
     ##### DATA #####
 
@@ -289,13 +289,14 @@ def trainingNetwork(images_folder_train, labels_folder_train, images_folder_val,
                 loss = losses.surface_loss(labels_batch, outputs)
             elif loss_to_use == "DICE+BOUNDARY":
 
-                if epoch < epochs_switch:
-                    loss = losses.GDL(outputs, labels_batch, w_for_GDL)
-                else:
-                    alpha = 1.0 - (epoch-epochs_switch) / 10.0
+                if epoch >= epochs_switch:
+                    alpha = 1.0 - (float(epoch - epochs_switch) / float(epoch_transition))
                     if alpha < 0.0:
                         alpha = 0.0
-                    loss = alpha * losses.GDL(outputs, labels_batch, w_for_GDL) + (1.0 - alpha) * 0.3 * losses.surface_loss(labels_batch, outputs)
+                    loss = alpha * losses.GDL(outputs, labels_batch, w_for_GDL) + (1.0 - alpha) * losses.surface_loss(
+                        labels_batch, outputs)
+                else:
+                    loss = losses.GDL(outputs, labels_batch, w_for_GDL)
 
             loss.backward()
 
@@ -397,32 +398,34 @@ def main():
     images_dir_val = "D:\\ten-orthos-scripps\\val_im"
     labels_dir_val = "D:\\ten-orthos-scripps\\val_lab"
 
-    lr = 0.00005                      # learning rate
-    L2 = 0.0005                       # weight decay
-    NEPOCHS = 80                      # number of epochs
-    VAL_FREQ = 1                      # validation frequency
-    NCLASSES = len(target_classes)    # number of classes
-    BATCH_SIZE = 4                    #
-    BATCH_MULTIPLIER = 8              # batch size = BATCH_SIZE * BATCH_MULTIPLIER
-    EPOCH_GDL_BOUNDARY_SWITCH = 8     # number of epochs before to switch to the Boundary loss
-    LOSS_TO_USE = "CROSSENTROPY"      # loss to use:
-                                      #     "CROSSENTROPY"  -> Weighted Cross Entropy Loss
-                                      #     "DICE"          -> Generalized Dice Loss (GDL)
-                                      #     "BOUNDARY"      -> Boundary Loss
-                                      #     "DICE+BOUNDARY" -> GDL, then Boundary Loss
+    lr = 0.00005                         # learning rate
+    L2 = 0.0005                          # weight decay
+    NEPOCHS = 80                         # number of epochs
+    VAL_FREQ = 1                         # validation frequency
+    NCLASSES = len(target_classes)       # number of classes
+    BATCH_SIZE = 8                       #
+    BATCH_MULTIPLIER = 8                 # effective batch size = BATCH_SIZE * BATCH_MULTIPLIER
+    GDL_BOUNDARY_EPOCH_SWITCH = 0        # number of epochs before to switch to the Boundary loss
+    GDL_BOUNDARY_EPOCH_TRANSITION = 0.1  # transition between GDL and BOUNDARY loss
+    LOSS_TO_USE = "CROSSENTROPY"         # loss to use:
+                                         #     "CROSSENTROPY"  -> Weighted Cross Entropy Loss
+                                         #     "DICE"          -> Generalized Dice Loss (GDL)
+                                         #     "BOUNDARY"      -> Boundary Loss
+                                         #     "DICE+BOUNDARY" -> GDL, then Boundary Loss
 
-    network_name = "DEEPLAB_lr=" + str(lr) + "_L2=" + str(L2) + "CROSS80"
+    network_name = "DEEPLAB_lr=" + str(lr) + "_L2=" + str(L2) + LOSS_TO_USE + str(GDL_BOUNDARY_EPOCH_TRANSITION)
     network_name = network_name + ".net"
 
-    save_classifier_as = "scripps-classifier-GDL+B_90.json"
-    classifier_name = "GDL+B_90"
+    save_classifier_as = "scripps-classifier-GDL+BOUNDARY.json"
+    classifier_name = "GDL+BOUNDARY"
 
     ##### TRAINING
     trainingNetwork(images_dir_train, labels_dir_train, images_dir_val, labels_dir_val,
                     dictionary, target_classes, num_classes=NCLASSES, save_network_as=network_name,
                     save_classifier_as=save_classifier_as, classifier_name=classifier_name,
                     epochs=NEPOCHS, batch_sz=BATCH_SIZE, batch_mult=BATCH_MULTIPLIER,
-                    validation_frequency=VAL_FREQ, loss_to_use=LOSS_TO_USE, epochs_switch=EPOCH_GDL_BOUNDARY_SWITCH,
+                    validation_frequency=VAL_FREQ, loss_to_use=LOSS_TO_USE,
+                    epochs_switch=GDL_BOUNDARY_EPOCH_SWITCH, epoch_transition=GDL_BOUNDARY_EPOCH_TRANSITION,
                     learning_rate=lr, L2_penalty=L2, flagShuffle=True, experiment_name="_EXPERIMENT")
 
     ##### TEST
