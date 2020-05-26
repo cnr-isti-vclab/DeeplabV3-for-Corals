@@ -100,15 +100,11 @@ def GDL(input, target, weights):
     """
     Generalized Dice Loss
 
-    :param input: input is a torch variable of size Batch x nclasses x H x W representing log probabilities for each class
+    :param input: input is a torch variable of size Batch x nclasses x H x W representing the predictions for each class
     :param target:  target is a 1-hot representation of the groundtruth, shoud have same size as the input
     :return: Generalized dice loss
 
     """
-
-    # input: torch.Tensor,
-    # target: torch.Tensor -> torch.Tensor
-
 
     nclasses = input.shape[1]
 
@@ -130,3 +126,71 @@ def GDL(input, target, weights):
     L = 1.0 - ((2.0 * intersection) + smooth) / (union + smooth)
 
     return L
+
+
+
+######################################################################################################
+# TVERSKY
+
+
+def tversky(input, target, alpha, beta):
+    """
+    Tversky
+
+    :param input: input is a torch variable of size Batch x nclasses x H x W representing the predictions for each class
+    :param target: target is a 1-hot representation of the groundtruth, shoud have same size as the input
+    :return: Generalized dice loss
+
+    Notes:
+        alpha = beta = 0.5 => dice coeff
+        alpha = beta = 1 => tanimoto coeff
+        alpha + beta = 1 => F beta coeff
+
+    References:
+        https://arxiv.org/abs/1706.05721
+    """
+    print(target)
+    nclasses = input.shape[1]
+
+    probs = torch.softmax(input, axis=1)
+    target_onehot = make_one_hot(target, nclasses)
+    print(target_onehot)
+
+    probs = probs.view(-1)
+    target_onehot = target_onehot.view(-1)
+
+    smooth = 1.0
+
+    TP = (probs * target_onehot).sum()
+    FN = (target_onehot * (1.0 - probs)).sum()
+    FP = ((1 - target_onehot) * probs).sum()
+
+    print(probs)
+    print(target_onehot)
+    print(TP)
+    print(FN)
+    print(FP)
+
+    L = (TP + smooth) / (TP + alpha * FN + beta * FP + smooth)
+
+    return L
+
+
+def focal_tversky(input, target, alpha, beta, gamma):
+    """
+    Focal Tversky Loss
+
+    :param input: input is a torch variable of size Batch x nclasses x H x W representing log probabilities for each class
+    :param target:  target is a 1-hot representation of the groundtruth, shoud have same size as the input
+    :return: Generalized dice loss
+
+    Notes:
+
+        gamma > 1.0 ..
+        gamma < 1.0 ..
+
+    """
+
+    t = tversky(input, target, alpha, beta)
+    t = 1.0 - t
+    return t.pow(gamma)

@@ -11,6 +11,7 @@ from sklearn.metrics import confusion_matrix
 from coral_dataset import CoralsDataset
 from labelsdictionary import dictScripps as dictionary
 import json
+import shutil
 from torch.utils.tensorboard import SummaryWriter
 import losses
 from torch.autograd import Variable
@@ -173,6 +174,7 @@ def writeClassifierInfo(filename, classifier_name, dataset):
     dict_to_save["Num. Classes"] = dataset.num_classes
     dict_to_save["Classes"] = dataset.dict_target
 
+
     str = json.dumps(dict_to_save)
 
     f = open(filename, "w")
@@ -193,6 +195,10 @@ def trainingNetwork(images_folder_train, labels_folder_train, images_folder_val,
     print("Dataset setup..", end='')
     datasetTrain.computeAverage()
     datasetTrain.computeWeights()
+    print(datasetTrain.dict_target)
+    print(datasetTrain.weights)
+    freq = 1.0 / datasetTrain.weights
+    print(freq)
     print("done.")
 
     writeClassifierInfo(save_classifier_as, classifier_name, datasetTrain)
@@ -263,6 +269,14 @@ def trainingNetwork(images_folder_train, labels_folder_train, images_folder_val,
     w_for_GDL = torch.from_numpy(w)
     w_for_GDL = w_for_GDL.to(device)
 
+    focal_tversky_gamma = torch.tensor(0.75)
+    focal_tversky_gamma = focal_tversky_gamma.to(device)
+
+    tversky_loss_alpha = torch.tensor(0.7)
+    tversky_loss_beta = torch.tensor(0.3)
+    tversky_loss_alpha = tversky_loss_alpha.to(device)
+    tversky_loss_beta = tversky_loss_beta.to(device)
+
     print("Training Network")
     for epoch in range(epochs):  # loop over the dataset multiple times
 
@@ -297,6 +311,10 @@ def trainingNetwork(images_folder_train, labels_folder_train, images_folder_val,
                         labels_batch, outputs)
                 else:
                     loss = losses.GDL(outputs, labels_batch, w_for_GDL)
+
+            elif loss_to_use == "FOCAL_TVERSKY":
+
+                loss = losses.focal_tversky(outputs, labels_batch, tversky_loss_alpha, tversky_loss_beta, focal_tversky_gamma)
 
             loss.backward()
 
@@ -352,14 +370,15 @@ def trainingNetwork(images_folder_train, labels_folder_train, images_folder_val,
     print("BEST ACCURACY REACHED ON THE VALIDATION SET: %.3f " % best_accuracy)
 
 
-def testNetwork(images_folder, labels_folder, dictionary, classifier_info_filename, network_filename, output_folder):
+def testNetwork(images_folder, labels_folder, dictionary, target_classes, num_classes, classifier_info_filename, network_filename, output_folder):
     """
     Load a network and test it on the test dataset.g
     :param network_filename: Full name of the network to load (PATH+name)
     """
 
+
     # TEST DATASET
-    datasetTest = CoralsDataset(images_folder, labels_folder, dictionary, None, 0)
+    datasetTest = CoralsDataset(images_folder, labels_folder, dictionary,  target_classes, num_classes)
     datasetTest.disableAugumentation()
 
     readClassifierInfo(classifier_info_filename, datasetTest)
@@ -380,7 +399,6 @@ def testNetwork(images_folder, labels_folder, dictionary, classifier_info_filena
 
 def main():
 
-    # classes to recognize (label name - label code)
     target_classes = {"Background": 0,
                       "Pocillopora": 1,
                       "Porite_massive": 2,
@@ -389,6 +407,16 @@ def main():
                       "Montipora_capitata": 5
                       }
 
+    # target_classes = {"Background": 0,
+    #                   "Pocillopora": 1,
+    #                   "Pocillopora_damicornis": 2,
+    #                   "Pocillopora_zelli": 3,
+    #                   "Pocillopora_eydouxi": 4,
+    #                   "Porite_massive": 5,
+    #                   "Montipora_plate/flabellata": 6,
+    #                   "Montipora_crust/patula": 7,
+    #                   "Montipora_capitata": 8
+    #                   }
 
     ##### TRAINING SETTINGS
 
@@ -403,39 +431,45 @@ def main():
     NEPOCHS = 80                         # number of epochs
     VAL_FREQ = 1                         # validation frequency
     NCLASSES = len(target_classes)       # number of classes
-    BATCH_SIZE = 8                       #
+    BATCH_SIZE = 3                       #
     BATCH_MULTIPLIER = 8                 # effective batch size = BATCH_SIZE * BATCH_MULTIPLIER
     GDL_BOUNDARY_EPOCH_SWITCH = 0        # number of epochs before to switch to the Boundary loss
     GDL_BOUNDARY_EPOCH_TRANSITION = 0.1  # transition between GDL and BOUNDARY loss
-    LOSS_TO_USE = "CROSSENTROPY"         # loss to use:
+    LOSS_TO_USE = "CROSSENTROPY"        # loss to use:
                                          #     "CROSSENTROPY"  -> Weighted Cross Entropy Loss
                                          #     "DICE"          -> Generalized Dice Loss (GDL)
                                          #     "BOUNDARY"      -> Boundary Loss
                                          #     "DICE+BOUNDARY" -> GDL, then Boundary Loss
+                                         #     "FOCAL_TVERSKY" -> focal Tversky loss
 
     network_name = "DEEPLAB_lr=" + str(lr) + "_L2=" + str(L2) + LOSS_TO_USE + str(GDL_BOUNDARY_EPOCH_TRANSITION)
+
     network_name = network_name + ".net"
 
     save_classifier_as = "scripps-classifier-GDL+BOUNDARY.json"
     classifier_name = "GDL+BOUNDARY"
 
-    ##### TRAINING
-    trainingNetwork(images_dir_train, labels_dir_train, images_dir_val, labels_dir_val,
-                    dictionary, target_classes, num_classes=NCLASSES, save_network_as=network_name,
-                    save_classifier_as=save_classifier_as, classifier_name=classifier_name,
-                    epochs=NEPOCHS, batch_sz=BATCH_SIZE, batch_mult=BATCH_MULTIPLIER,
-                    validation_frequency=VAL_FREQ, loss_to_use=LOSS_TO_USE,
-                    epochs_switch=GDL_BOUNDARY_EPOCH_SWITCH, epoch_transition=GDL_BOUNDARY_EPOCH_TRANSITION,
-                    learning_rate=lr, L2_penalty=L2, flagShuffle=True, experiment_name="_EXPERIMENT")
+    # ##### TRAINING
+    # trainingNetwork(images_dir_train, labels_dir_train, images_dir_val, labels_dir_val,
+    #                 dictionary, target_classes, num_classes=NCLASSES, save_network_as=network_name,
+    #                 save_classifier_as=save_classifier_as, classifier_name=classifier_name,
+    #                 epochs=NEPOCHS, batch_sz=BATCH_SIZE, batch_mult=BATCH_MULTIPLIER,
+    #                 validation_frequency=VAL_FREQ, loss_to_use=LOSS_TO_USE,
+    #                 epochs_switch=GDL_BOUNDARY_EPOCH_SWITCH, epoch_transition=GDL_BOUNDARY_EPOCH_TRANSITION,
+    #                 learning_rate=lr, L2_penalty=L2, flagShuffle=True, experiment_name="_EXPERIMENT")
 
     ##### TEST
 
-    # images_dir_test = "D:\\SCRIPPS MAPS\\tiles\\HAW_2016\\test_img"
-    # labels_dir_test= "D:\\SCRIPPS MAPS\\tiles\\HAW_2016\\test_labels"
-    # output_folder = "C:\\pytorch\\pytorch-deeplab-xception\\DeeplabV3+Corals\\temp"
-    #
-    # testNetwork(images_dir_test, labels_dir_test, dictionary, "scripps-classifier.json",
-    #             "DEEPLAB_lr=5e-05_L2=0.0005GDL+B_90.net", output_folder)
+    output_folder = "C:\\DeeplabV3-for-Corals\\temp"
+
+    if not os.path.exists(output_folder):
+        os.makedirs(output_folder)
+
+    images_dir_test = "D:\\SCRIPPS MAPS\\tiles\\HAW_2016\\test_img"
+    labels_dir_test = "D:\\SCRIPPS MAPS\\tiles\\HAW_2016\\test_labels"
+
+
+    testNetwork(images_dir_test, labels_dir_test, dictionary,  target_classes, NCLASSES, save_classifier_as, network_name, output_folder)
 
 
 if __name__ == '__main__':
