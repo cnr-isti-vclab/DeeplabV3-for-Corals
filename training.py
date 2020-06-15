@@ -15,6 +15,7 @@ import shutil
 from torch.utils.tensorboard import SummaryWriter
 import losses
 from torch.autograd import Variable
+import pandas as pd
 
 # SEED
 torch.manual_seed(997)
@@ -185,7 +186,7 @@ def writeClassifierInfo(filename, classifier_name, dataset):
 def trainingNetwork(images_folder_train, labels_folder_train, images_folder_val, labels_folder_val,
                     dictionary, target_classes, num_classes, save_network_as, save_classifier_as, classifier_name,
                     epochs, batch_sz, batch_mult, learning_rate, L2_penalty, validation_frequency, loss_to_use,
-                    epochs_switch, epoch_transition, flagShuffle, experiment_name):
+                    epochs_switch, epoch_transition, optim, flagShuffle, experiment_name):
 
     ##### DATA #####
 
@@ -241,8 +242,11 @@ def trainingNetwork(images_folder_train, labels_folder_train, images_folder_val,
 
 
     # OPTIMIZER
-    # optimizer = optim.SGD(net.parameters(), lr=learning_rate, weight_decay=0.0002, momentum=0.9)
-    optimizer = optim.Adam(net.parameters(), lr=learning_rate, weight_decay=L2_penalty)
+
+    if optim == "SGD":
+        optimizer = optim.SGD(net.parameters(), lr=learning_rate, weight_decay=L2_penalty, momentum=0.9)
+    else:
+        optimizer = optim.Adam(net.parameters(), lr=learning_rate, weight_decay=L2_penalty)
 
     USE_CUDA = torch.cuda.is_available()
 
@@ -254,8 +258,6 @@ def trainingNetwork(images_folder_train, labels_folder_train, images_folder_val,
 
     # Writer will output to ./runs/ directory by default
     writer = SummaryWriter(comment=experiment_name)
-
-    #writer.add_hparams({'lr': learning_rate, 'wdecay': L2_penalty})
 
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=2, verbose=True)
 
@@ -362,7 +364,7 @@ def trainingNetwork(images_folder_train, labels_folder_train, images_folder_val,
 
             print("-> CURRENT BEST ACCURACY ", best_accuracy)
 
-    writer.add_hparams({'LR': learning_rate, 'Decay': L2_penalty}, {'hparam/Accuracy': best_accuracy, 'hparam/mIoU': best_jaccard_score})
+    writer.add_hparams({'LR': learning_rate, 'Decay': L2_penalty, 'Loss': loss_to_use }, {'hparam/Accuracy': best_accuracy, 'hparam/mIoU': best_jaccard_score})
 
     writer.close()
 
@@ -399,6 +401,7 @@ def testNetwork(images_folder, labels_folder, dictionary, target_classes, num_cl
 
 def main():
 
+    # TARGET CLASSES
     target_classes = {"Background": 0,
                       "Pocillopora": 1,
                       "Porite_massive": 2,
@@ -418,58 +421,84 @@ def main():
     #                   "Montipora_capitata": 8
     #                   }
 
-    ##### TRAINING SETTINGS
 
+
+    # DATASET FOLDERS
     images_dir_train = "D:\\ten-orthos-scripps\\train_im"
     labels_dir_train = "D:\\ten-orthos-scripps\\train_lab"
 
     images_dir_val = "D:\\ten-orthos-scripps\\val_im"
     labels_dir_val = "D:\\ten-orthos-scripps\\val_lab"
 
-    lr = 0.00005                         # learning rate
-    L2 = 0.0005                          # weight decay
-    NEPOCHS = 80                         # number of epochs
-    VAL_FREQ = 1                         # validation frequency
-    NCLASSES = len(target_classes)       # number of classes
-    BATCH_SIZE = 3                       #
-    BATCH_MULTIPLIER = 8                 # effective batch size = BATCH_SIZE * BATCH_MULTIPLIER
-    GDL_BOUNDARY_EPOCH_SWITCH = 0        # number of epochs before to switch to the Boundary loss
-    GDL_BOUNDARY_EPOCH_TRANSITION = 0.1  # transition between GDL and BOUNDARY loss
-    LOSS_TO_USE = "CROSSENTROPY"        # loss to use:
-                                         #     "CROSSENTROPY"  -> Weighted Cross Entropy Loss
-                                         #     "DICE"          -> Generalized Dice Loss (GDL)
-                                         #     "BOUNDARY"      -> Boundary Loss
-                                         #     "DICE+BOUNDARY" -> GDL, then Boundary Loss
-                                         #     "FOCAL_TVERSKY" -> focal Tversky loss
-
-    network_name = "DEEPLAB_lr=" + str(lr) + "_L2=" + str(L2) + LOSS_TO_USE + str(GDL_BOUNDARY_EPOCH_TRANSITION)
-
-    network_name = network_name + ".net"
-
-    save_classifier_as = "scripps-classifier-GDL+BOUNDARY.json"
-    classifier_name = "GDL+BOUNDARY"
-
-    # ##### TRAINING
-    # trainingNetwork(images_dir_train, labels_dir_train, images_dir_val, labels_dir_val,
-    #                 dictionary, target_classes, num_classes=NCLASSES, save_network_as=network_name,
-    #                 save_classifier_as=save_classifier_as, classifier_name=classifier_name,
-    #                 epochs=NEPOCHS, batch_sz=BATCH_SIZE, batch_mult=BATCH_MULTIPLIER,
-    #                 validation_frequency=VAL_FREQ, loss_to_use=LOSS_TO_USE,
-    #                 epochs_switch=GDL_BOUNDARY_EPOCH_SWITCH, epoch_transition=GDL_BOUNDARY_EPOCH_TRANSITION,
-    #                 learning_rate=lr, L2_penalty=L2, flagShuffle=True, experiment_name="_EXPERIMENT")
-
-    ##### TEST
-
-    output_folder = "C:\\DeeplabV3-for-Corals\\temp"
-
-    if not os.path.exists(output_folder):
-        os.makedirs(output_folder)
-
     images_dir_test = "D:\\SCRIPPS MAPS\\tiles\\HAW_2016\\test_img"
     labels_dir_test = "D:\\SCRIPPS MAPS\\tiles\\HAW_2016\\test_labels"
 
+    # LOAD EXPERIMENTS
 
-    testNetwork(images_dir_test, labels_dir_test, dictionary,  target_classes, NCLASSES, save_classifier_as, network_name, output_folder)
+    # LR = learning rate (0.00005)
+    # L2 = weight decay (0.0005)
+    # NEPOCHS = number of epochs
+    # VAL_FREQ = validation frequency
+    # BATCH_SIZE, BATCH_MULTIPLIER -> effective batch size = BATCH_SIZE * BATCH_MULTIPLIER
+    # GDL_BOUNDARY_EPOCH_SWITCH -> number of epochs before to switch to the Boundary loss (0 in the original implementation)
+    # GDL_BOUNDARY_EPOCH_TRANSITION = 0.1 -> transition between GDL and BOUNDARY loss
+    #                                        the number of epochs for the transition is 1 / GDL_BOUNDARY_EPOCH_TRANSITION
+    # LOSS_TO_USE -> loss to use
+    #                "CROSSENTROPY"  -> Weighted Cross Entropy Loss
+    #                "DICE"          -> Generalized Dice Loss (GDL)
+    #                "BOUNDARY"      -> Boundary Loss
+    #                "DICE+BOUNDARY" -> GDL, then Boundary Loss
+    #                "FOCAL_TVERSKY" -> focal Tversky loss
+    # OPTIMIZER -> "Adam" or "SGD"
+    #
+
+    experiments = pd.read_csv("experiments.csv")
+
+    NCLASSES = len(target_classes)  # number of classes
+
+    ##### RUN THE EXPERIMENTS
+    for index, row in experiments.iterrows():
+
+        LR = row["LR"]
+        L2 = row["L2"]
+        NEPOCHS = row["NEPOCHS"]
+        VAL_FREQ = row["VAL_FREQ"]
+        BATCH_SIZE = row["BATCH_SIZE"]
+        BATCH_MULTIPLIER = row["BATCH_MULTIPLIER"]
+        GDL_BOUNDARY_EPOCH_SWITCH = row["GDL_BOUNDARY_EPOCH_SWITCH"]
+        GDL_BOUNDARY_EPOCH_TRANSITION = row["GDL_BOUNDARY_EPOCH_TRANSITION"]
+        LOSS_TO_USE = row["LOSS_TO_USE"]
+        OPTIMIZER = row["OPTIMIZER"]
+
+        params = "LR=" + str(LR) + "_L2=" + str(L2) + "_BS=" + str(BATCH_SIZE) + "x" + str(BATCH_MULTIPLIER) + "_loss=" + LOSS_TO_USE
+        if LOSS_TO_USE == "DICE+BOUNDARY":
+            params = params + "_" + str(GDL_BOUNDARY_EPOCH_TRANSITION)
+        network_name = "DEEPLAB_" + params + ".net"
+
+        experiment_name = "_EXP_" + params
+
+        save_classifier_as = network_name + ".json"
+        classifier_name = "Coral 6-classes"
+
+        ##### TRAINING
+        trainingNetwork(images_dir_train, labels_dir_train, images_dir_val, labels_dir_val,
+                        dictionary, target_classes, num_classes=NCLASSES, save_network_as=network_name,
+                        save_classifier_as=save_classifier_as, classifier_name=classifier_name,
+                        epochs=NEPOCHS, batch_sz=BATCH_SIZE, batch_mult=BATCH_MULTIPLIER,
+                        validation_frequency=VAL_FREQ, loss_to_use=LOSS_TO_USE,
+                        epochs_switch=GDL_BOUNDARY_EPOCH_SWITCH, epoch_transition=GDL_BOUNDARY_EPOCH_TRANSITION,
+                        learning_rate=LR, L2_penalty=L2, optim=OPTIMIZER,
+                        flagShuffle=True, experiment_name=experiment_name)
+
+        ##### TEST
+
+        output_folder = os.path.join("temp", params)
+
+        if not os.path.exists(output_folder):
+            os.makedirs(output_folder)
+
+        testNetwork(images_dir_test, labels_dir_test, dictionary,  target_classes, NCLASSES, save_classifier_as,
+                    network_name, output_folder)
 
 
 if __name__ == '__main__':
