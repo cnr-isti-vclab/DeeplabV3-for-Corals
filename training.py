@@ -12,7 +12,7 @@ from coral_dataset import CoralsDataset
 from labelsdictionary import dictScripps as dictionary
 import json
 import shutil
-from torch.utils.tensorboard import SummaryWriter
+#from torch.utils.tensorboard import SummaryWriter
 import losses
 from torch.autograd import Variable
 import pandas as pd
@@ -186,7 +186,7 @@ def writeClassifierInfo(filename, classifier_name, dataset):
 def trainingNetwork(images_folder_train, labels_folder_train, images_folder_val, labels_folder_val,
                     dictionary, target_classes, num_classes, save_network_as, save_classifier_as, classifier_name,
                     epochs, batch_sz, batch_mult, learning_rate, L2_penalty, validation_frequency, loss_to_use,
-                    epochs_switch, epoch_transition, optim, flagShuffle, experiment_name):
+                    epochs_switch, epoch_transition, tversky_alpha, tversky_gamma, optim, flagShuffle, experiment_name):
 
     ##### DATA #####
 
@@ -271,11 +271,13 @@ def trainingNetwork(images_folder_train, labels_folder_train, images_folder_val,
     w_for_GDL = torch.from_numpy(w)
     w_for_GDL = w_for_GDL.to(device)
 
-    focal_tversky_gamma = torch.tensor(0.75)
+    focal_tversky_gamma = torch.tensor(tversky_gamma)
     focal_tversky_gamma = focal_tversky_gamma.to(device)
 
-    tversky_loss_alpha = torch.tensor(0.7)
-    tversky_loss_beta = torch.tensor(0.3)
+    #tversky_loss_alpha = torch.tensor(0.7)
+    #tversky_loss_beta = torch.tensor(0.3)
+    tversky_loss_alpha = torch.tensor(tversky_alpha)
+    tversky_loss_beta = torch.tensor(1.0 - tversky_alpha)
     tversky_loss_alpha = tversky_loss_alpha.to(device)
     tversky_loss_beta = tversky_loss_beta.to(device)
 
@@ -440,8 +442,6 @@ def main():
     # NEPOCHS = number of epochs
     # VAL_FREQ = validation frequency
     # BATCH_SIZE, BATCH_MULTIPLIER -> effective batch size = BATCH_SIZE * BATCH_MULTIPLIER
-    # GDL_BOUNDARY_EPOCH_SWITCH -> number of epochs before to switch to the Boundary loss (0 in the original implementation)
-    # GDL_BOUNDARY_EPOCH_TRANSITION = 0.1 -> transition between GDL and BOUNDARY loss
     #                                        the number of epochs for the transition is 1 / GDL_BOUNDARY_EPOCH_TRANSITION
     # LOSS_TO_USE -> loss to use
     #                "CROSSENTROPY"  -> Weighted Cross Entropy Loss
@@ -449,6 +449,10 @@ def main():
     #                "BOUNDARY"      -> Boundary Loss
     #                "DICE+BOUNDARY" -> GDL, then Boundary Loss
     #                "FOCAL_TVERSKY" -> focal Tversky loss
+    # GDL_BOUNDARY_EPOCH_SWITCH -> number of epochs before to switch to the Boundary loss (0 in the original implementation)
+    # GDL_BOUNDARY_EPOCH_TRANSITION = 0.1 -> transition between GDL and BOUNDARY loss
+    # TVERSKY_ALPHA -> IMPORTANCE OF FN w.r.t TP (0.7 REDUCES FN)
+    # TVERSKY_GAMMA -> used by the FOCAL variant (>1 weights misclassified class more), 1/GAMMA in the original implementation
     # OPTIMIZER -> "Adam" or "SGD"
     #
 
@@ -465,14 +469,19 @@ def main():
         VAL_FREQ = row["VAL_FREQ"]
         BATCH_SIZE = row["BATCH_SIZE"]
         BATCH_MULTIPLIER = row["BATCH_MULTIPLIER"]
+        LOSS_TO_USE = row["LOSS_TO_USE"]
         GDL_BOUNDARY_EPOCH_SWITCH = row["GDL_BOUNDARY_EPOCH_SWITCH"]
         GDL_BOUNDARY_EPOCH_TRANSITION = row["GDL_BOUNDARY_EPOCH_TRANSITION"]
-        LOSS_TO_USE = row["LOSS_TO_USE"]
+        TVERSKY_ALPHA = row["TVERSKY_ALPHA"]
+        TVERSKY_GAMMA = row["TVERSKY_GAMMA"]
         OPTIMIZER = row["OPTIMIZER"]
 
         params = "LR=" + str(LR) + "_L2=" + str(L2) + "_BS=" + str(BATCH_SIZE) + "x" + str(BATCH_MULTIPLIER) + "_loss=" + LOSS_TO_USE
         if LOSS_TO_USE == "DICE+BOUNDARY":
-            params = params + "_" + str(GDL_BOUNDARY_EPOCH_TRANSITION)
+            params = params + "_TRANSITION=" + str(GDL_BOUNDARY_EPOCH_TRANSITION)
+        elif LOSS_TO_USE == "FOCAL_TVERSKY":
+            params = params + "_ALPHA=" + str(TVERSKY_ALPHA) + "_GAMMA=" + str(TVERSKY_GAMMA)
+
         network_name = "DEEPLAB_" + params + ".net"
 
         experiment_name = "_EXP_" + params
@@ -487,8 +496,8 @@ def main():
                         epochs=NEPOCHS, batch_sz=BATCH_SIZE, batch_mult=BATCH_MULTIPLIER,
                         validation_frequency=VAL_FREQ, loss_to_use=LOSS_TO_USE,
                         epochs_switch=GDL_BOUNDARY_EPOCH_SWITCH, epoch_transition=GDL_BOUNDARY_EPOCH_TRANSITION,
-                        learning_rate=LR, L2_penalty=L2, optim=OPTIMIZER,
-                        flagShuffle=True, experiment_name=experiment_name)
+                        learning_rate=LR, L2_penalty=L2, tversky_alpha=TVERSKY_ALPHA, tversky_gamma=TVERSKY_GAMMA,
+                        optim=OPTIMIZER, flagShuffle=True, experiment_name=experiment_name)
 
         ##### TEST
 
