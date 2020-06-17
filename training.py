@@ -12,7 +12,7 @@ from coral_dataset import CoralsDataset
 from labelsdictionary import dictScripps as dictionary
 import json
 import shutil
-#from torch.utils.tensorboard import SummaryWriter
+from torch.utils.tensorboard import SummaryWriter
 import losses
 from torch.autograd import Variable
 import pandas as pd
@@ -186,7 +186,7 @@ def writeClassifierInfo(filename, classifier_name, dataset):
 def trainingNetwork(images_folder_train, labels_folder_train, images_folder_val, labels_folder_val,
                     dictionary, target_classes, num_classes, save_network_as, save_classifier_as, classifier_name,
                     epochs, batch_sz, batch_mult, learning_rate, L2_penalty, validation_frequency, loss_to_use,
-                    epochs_switch, epoch_transition, tversky_alpha, tversky_gamma, optim, flagShuffle, experiment_name):
+                    epochs_switch, epoch_transition, tversky_alpha, tversky_gamma, optimiz, flagShuffle, experiment_name):
 
     ##### DATA #####
 
@@ -243,7 +243,7 @@ def trainingNetwork(images_folder_train, labels_folder_train, images_folder_val,
 
     # OPTIMIZER
 
-    if optim == "SGD":
+    if optimiz == "SGD":
         optimizer = optim.SGD(net.parameters(), lr=learning_rate, weight_decay=L2_penalty, momentum=0.9)
     else:
         optimizer = optim.Adam(net.parameters(), lr=learning_rate, weight_decay=L2_penalty)
@@ -366,7 +366,8 @@ def trainingNetwork(images_folder_train, labels_folder_train, images_folder_val,
 
             print("-> CURRENT BEST ACCURACY ", best_accuracy)
 
-    writer.add_hparams({'LR': learning_rate, 'Decay': L2_penalty, 'Loss': loss_to_use }, {'hparam/Accuracy': best_accuracy, 'hparam/mIoU': best_jaccard_score})
+    writer.add_hparams({'LR': learning_rate, 'Decay': L2_penalty, 'Loss': loss_to_use, 'Transition': epoch_transition,
+                        'Gamma': tversky_gamma, 'Alpha': tversky_alpha }, {'hparam/Accuracy': best_accuracy, 'hparam/mIoU': best_jaccard_score})
 
     writer.close()
 
@@ -432,8 +433,8 @@ def main():
     images_dir_val = "D:\\ten-orthos-scripps\\val_im"
     labels_dir_val = "D:\\ten-orthos-scripps\\val_lab"
 
-    images_dir_test = "D:\\SCRIPPS MAPS\\tiles\\HAW_2016\\test_img"
-    labels_dir_test = "D:\\SCRIPPS MAPS\\tiles\\HAW_2016\\test_labels"
+    images_dir_test = "D:\\ten-orthos-scripps\\test_im"
+    labels_dir_test = "D:\\ten-orthos-scripps\\test_lab"
 
     # LOAD EXPERIMENTS
 
@@ -497,7 +498,7 @@ def main():
                         validation_frequency=VAL_FREQ, loss_to_use=LOSS_TO_USE,
                         epochs_switch=GDL_BOUNDARY_EPOCH_SWITCH, epoch_transition=GDL_BOUNDARY_EPOCH_TRANSITION,
                         learning_rate=LR, L2_penalty=L2, tversky_alpha=TVERSKY_ALPHA, tversky_gamma=TVERSKY_GAMMA,
-                        optim=OPTIMIZER, flagShuffle=True, experiment_name=experiment_name)
+                        optimiz=OPTIMIZER, flagShuffle=True, experiment_name=experiment_name)
 
         ##### TEST
 
