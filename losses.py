@@ -135,7 +135,7 @@ def GDL(input, target, weights):
 
 def tversky(input, target, alpha, beta):
     """
-    Tversky
+    Tversky loss
 
     :param input: input is a torch variable of size Batch x nclasses x H x W representing the predictions for each class
     :param target: target is a 1-hot representation of the groundtruth, shoud have same size as the input
@@ -149,48 +149,64 @@ def tversky(input, target, alpha, beta):
     References:
         https://arxiv.org/abs/1706.05721
     """
-    print(target)
+
     nclasses = input.shape[1]
 
     probs = torch.softmax(input, axis=1)
     target_onehot = make_one_hot(target, nclasses)
-    print(target_onehot)
 
-    probs = probs.view(-1)
-    target_onehot = target_onehot.view(-1)
+    #probs = probs.view(-1)
+    #target_onehot = target_onehot.view(-1)
 
     smooth = 1.0
 
-    TP = (probs * target_onehot).sum()
-    FN = (target_onehot * (1.0 - probs)).sum()
-    FP = ((1 - target_onehot) * probs).sum()
+    dims = (0,2,3)
+    TP = torch.sum(probs * target_onehot, dims)
+    FN = torch.sum(target_onehot * (1.0 - probs), dims)
+    FP = torch.sum((1 - target_onehot) * probs, dims)
 
-    print(probs)
-    print(target_onehot)
-    print(TP)
-    print(FN)
-    print(FP)
+    TR = ((TP + smooth) / (TP + alpha * FN + beta * FP + smooth)).mean()
 
-    L = (TP + smooth) / (TP + alpha * FN + beta * FP + smooth)
+    return TR
 
-    return L
 
 
 def focal_tversky(input, target, alpha, beta, gamma):
     """
-    Focal Tversky Loss
+    Focal Tversky loss (combine focal loss to fight imbalance with Tversky loss
 
-    :param input: input is a torch variable of size Batch x nclasses x H x W representing log probabilities for each class
-    :param target:  target is a 1-hot representation of the groundtruth, shoud have same size as the input
+    :param input: input is a torch variable of size Batch x nclasses x H x W representing the predictions for each class
+    :param target: target is a 1-hot representation of the groundtruth, shoud have same size as the input
     :return: Generalized dice loss
 
     Notes:
+        alpha = beta = 0.5 => dice coeff
+        alpha = beta = 1 => tanimoto coeff
+        alpha + beta = 1 => F beta coeff
 
-        gamma > 1.0 ..
-        gamma < 1.0 ..
-
+    References:
+        https://arxiv.org/abs/1706.05721
     """
 
-    t = tversky(input, target, alpha, beta)
-    t = 1.0 - t
-    return t.pow(gamma)
+    nclasses = input.shape[1]
+
+    probs = torch.softmax(input, axis=1)
+    target_onehot = make_one_hot(target, nclasses)
+
+    #probs = probs.view(-1)
+    #target_onehot = target_onehot.view(-1)
+
+    smooth = 1.0
+
+    dims = (0,2,3)
+    TP = torch.sum(probs * target_onehot, dims)
+    FN = torch.sum(target_onehot * (1.0 - probs), dims)
+    FP = torch.sum((1 - target_onehot) * probs, dims)
+
+    TR = ((TP + smooth) / (TP + alpha * FN + beta * FP + smooth))
+
+    TR = 1.0 - TR
+    TR = TR.pow(gamma)
+    FTR = TR.sum()
+
+    return FTR
