@@ -1,3 +1,4 @@
+import sys
 import os
 import numpy as np
 import torch
@@ -286,6 +287,9 @@ def trainingNetwork(images_folder_train, labels_folder_train, images_folder_val,
 
         net.train()
         optimizer.zero_grad()
+
+        writer.add_scalar('LR/train', optimizer.param_groups[0]['lr'], epoch)
+
         running_loss = 0.0
         for i, minibatch in enumerate(dataloaderTrain):
             # get the inputs
@@ -311,8 +315,7 @@ def trainingNetwork(images_folder_train, labels_folder_train, images_folder_val,
                     alpha = 1.0 - (float(epoch - epochs_switch) / float(epoch_transition))
                     if alpha < 0.0:
                         alpha = 0.0
-                    loss = alpha * losses.GDL(outputs, labels_batch, w_for_GDL) + (1.0 - alpha) * losses.surface_loss(
-                        labels_batch, outputs)
+                    loss = alpha * losses.GDL(outputs, labels_batch, w_for_GDL) + (1.0 - alpha) * losses.surface_loss(labels_batch, outputs)
                 else:
                     loss = losses.GDL(outputs, labels_batch, w_for_GDL)
 
@@ -320,9 +323,21 @@ def trainingNetwork(images_folder_train, labels_folder_train, images_folder_val,
 
                 loss = losses.focal_tversky(outputs, labels_batch, tversky_loss_alpha, tversky_loss_beta, focal_tversky_gamma)
 
+            elif loss_to_use == "FOCAL+BOUNDARY":
+
+                if epoch >= epochs_switch:
+                    alpha = 1.0 - (float(epoch - epochs_switch) / float(epoch_transition))
+                    if alpha < 0.0:
+                        alpha = 0.0
+                    loss = alpha * losses.focal_tversky(outputs, labels_batch, tversky_loss_alpha, tversky_loss_beta,
+                                                        focal_tversky_gamma) + (1.0 - alpha) * losses.surface_loss(labels_batch, outputs)
+                else:
+                    loss = losses.focal_tversky(outputs, labels_batch, tversky_loss_alpha, tversky_loss_beta,
+                                                focal_tversky_gamma)
+
             loss.backward()
 
-            # TO AVOID MEMORY TRUBLE UPDATE WEIGHTS EVERY BATCH SIZE X BATCH MULT
+            # TO AVOID MEMORY TROUBLE UPDATE WEIGHTS EVERY BATCH SIZE X BATCH MULT
             if (i+1)% batch_mult == 0:
                 optimizer.step()
                 optimizer.zero_grad()
@@ -331,7 +346,6 @@ def trainingNetwork(images_folder_train, labels_folder_train, images_folder_val,
             running_loss += loss.item()
 
         print("Epoch: %d , Running loss = %f" % (epoch, running_loss))
-
 
         ### VALIDATION ###
         if epoch > 0 and (epoch+1) % validation_frequency == 0:
@@ -427,14 +441,14 @@ def main():
 
 
     # DATASET FOLDERS
-    images_dir_train = "D:\\ten-orthos-scripps\\train_im"
-    labels_dir_train = "D:\\ten-orthos-scripps\\train_lab"
+    images_dir_train = "D:\\ten-orthos-scripps\\mini_train_im"
+    labels_dir_train = "D:\\ten-orthos-scripps\\mini_train_lab"
 
-    images_dir_val = "D:\\ten-orthos-scripps\\val_im"
-    labels_dir_val = "D:\\ten-orthos-scripps\\val_lab"
+    images_dir_val = "D:\\ten-orthos-scripps\\mini_val_im"
+    labels_dir_val = "D:\\ten-orthos-scripps\\mini_val_lab"
 
-    images_dir_test = "D:\\ten-orthos-scripps\\test_im"
-    labels_dir_test = "D:\\ten-orthos-scripps\\test_lab"
+    images_dir_test = "D:\\ten-orthos-scripps\\mini_test_im"
+    labels_dir_test = "D:\\ten-orthos-scripps\\mini_test_lab"
 
     # LOAD EXPERIMENTS
 
@@ -457,7 +471,8 @@ def main():
     # OPTIMIZER -> "Adam" or "SGD"
     #
 
-    experiments = pd.read_csv("experiments.csv")
+    #experiments = pd.read_csv("experiments.csv")
+    experiments = pd.read_csv("mini.csv")
 
     NCLASSES = len(target_classes)  # number of classes
 
