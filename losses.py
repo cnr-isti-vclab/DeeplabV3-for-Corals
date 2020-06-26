@@ -8,16 +8,14 @@ from scipy.ndimage import distance_transform_edt as distance
 # SURFACE LOSS
 
 def one_hot2dist(seg):
+    """
+    Given a NCLASSES x HEIGHT x WIDTH segmentation matrix it returns the corresponding distance map per-classes.
+    """
 
-    #n_classes = seg.shape[1]
-    #posmask = seg[:, 1:n_classes, :, :]  # BACKGROUND is skipped (!)
-
-    C = seg.shape[1]
-
+    C = seg.shape[0]
     res = np.zeros_like(seg)
     for c in range(1, C):  # background is excluded (C=0)
         posmask = seg[c].astype(np.bool)
-
         if posmask.any():
             negmask = ~posmask
             res[c] = distance(negmask) * negmask - (distance(posmask) - 1) * posmask
@@ -33,16 +31,22 @@ def surface_loss(y_true, y_pred):
 
     N = y_true.shape[0]
 
+    y_true_onehot = make_one_hot(y_true, n_classes)
+    y_true_onehot_numpy = y_true_onehot.cpu().numpy()
+
+    print(y_pred.shape)
+    print(y_true.shape)
+    print(y_true_onehot.shape)
+
     loss = 0.0
     for i in range(N):
 
-        y_true_onehot = make_one_hot(y_true, n_classes)
-        y_true_onehot_numpy = y_true_onehot.cpu().numpy()
-        dist_maps = one_hot2dist(y_true_onehot_numpy)  # it works on a numpy array
+        dist_maps = one_hot2dist(y_true_onehot_numpy[i])  # it works on a numpy array
         dist_maps_tensor = torch.from_numpy(dist_maps).to(torch.float32)
         dist_maps_tensor = dist_maps_tensor.to(device='cuda:0')
         #dist_maps_tensor = Variable(dist_maps_tensor)
 
+        print(dist_maps_tensor.shape)
         loss += dist_maps_tensor * y_pred_prob[i]
 
     return loss.mean()
@@ -118,6 +122,8 @@ def GDL(input, target, weights):
     intersection = weights[0] * (input_no_back[:, 0, :, :] * target_onehot_no_back[:, 0, :, :]).sum()
     union = weights[0] * (input_no_back[:, 0, :, :].sum() + target_onehot_no_back[:, 0, :, :].sum())
 
+    # nclasses-1 because we have excluded the background with the previous assignment
+    # (input_no_back = .. , target_onehot_no_back = ..)
     for j in range(1, nclasses-1):
         intersection += weights[j] * (input_no_back[:, j, :, :] * target_onehot_no_back[:, j, :, :]).sum()
         union += weights[j] * (input_no_back[:, j, :, :].sum() + target_onehot_no_back[:, j, :, :].sum())
