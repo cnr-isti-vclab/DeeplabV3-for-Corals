@@ -34,10 +34,6 @@ def surface_loss(y_true, y_pred):
     y_true_onehot = make_one_hot(y_true, n_classes)
     y_true_onehot_numpy = y_true_onehot.cpu().numpy()
 
-    print(y_pred.shape)
-    print(y_true.shape)
-    print(y_true_onehot.shape)
-
     loss = 0.0
     for i in range(N):
 
@@ -46,7 +42,6 @@ def surface_loss(y_true, y_pred):
         dist_maps_tensor = dist_maps_tensor.to(device='cuda:0')
         #dist_maps_tensor = Variable(dist_maps_tensor)
 
-        print(dist_maps_tensor.shape)
         loss += dist_maps_tensor * y_pred_prob[i]
 
     return loss.mean()
