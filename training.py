@@ -97,10 +97,13 @@ def evaluateNetwork(dataset, dataloader, loss_to_use, CEloss, w_for_GDL, tversky
             # predictions size --> N x H x W
             values, predictions_t = torch.max(outputs, 1)
 
-            loss = computeLoss(loss_to_use, CEloss, w_for_GDL, tversky_loss_alpha, tversky_loss_beta, focal_tversky_gamma,
-                               epoch, epochs_switch, epochs_transition, labels_batch, outputs)
+            if loss_to_use == "NONE":
+                loss_values.append(0.0)
+            else:
+                loss = computeLoss(loss_to_use, CEloss, w_for_GDL, tversky_loss_alpha, tversky_loss_beta,
+                                   focal_tversky_gamma, epoch, epochs_switch, epochs_transition, labels_batch, outputs)
 
-            loss_values.append(loss.item())
+                loss_values.append(loss.item())
 
             pred_cpu = predictions_t.cpu()
             labels_cpu = labels_batch.cpu()
@@ -389,7 +392,7 @@ def trainingNetwork(images_folder_train, labels_folder_train, images_folder_val,
 
             print("-> CURRENT BEST ACCURACY ", best_accuracy)
 
-    writer.add_hparams({'LR': learning_rate, 'Decay': L2_penalty, 'Loss': loss_to_use, 'Transition': epoch_transition,
+    writer.add_hparams({'LR': learning_rate, 'Decay': L2_penalty, 'Loss': loss_to_use, 'Transition': epochs_transition,
                         'Gamma': tversky_gamma, 'Alpha': tversky_alpha }, {'hparam/Accuracy': best_accuracy, 'hparam/mIoU': best_jaccard_score})
 
     writer.close()
@@ -419,7 +422,8 @@ def testNetwork(images_folder, labels_folder, dictionary, target_classes, num_cl
     net.load_state_dict(torch.load(network_filename))
     print("Weights loaded.")
 
-    metrics_test, loss = evaluateNetwork(datasetTest, dataloaderTest, datasetTest.weights, datasetTest.num_classes, net, False, output_folder)
+    metrics_test, loss = evaluateNetwork(datasetTest, dataloaderTest, "NONE", None, [0.0], 0.0, 0.0, 0.0, 0, 0, 0,
+                                         datasetTest.num_classes, net, False, output_folder)
     metrics_filename = network_filename[:len(network_filename) - 4] + "-test-metrics.txt"
     saveMetrics(metrics_test, metrics_filename)
     print("***** TEST FINISHED *****")
