@@ -49,7 +49,9 @@ def saveMetrics(metrics, filename):
 
 
 # VALIDATION
-def evaluateNetwork(dataset, dataloader, weights, nclasses, net, flagTrainingDataset=False, savefolder=""):
+def evaluateNetwork(dataset, dataloader, loss_to_use, CEloss, w_for_GDL, tversky_loss_alpha, tversky_loss_beta,
+                    focal_tversky_gamma, epoch, epochs_switch, epochs_transition, nclasses, net,
+                    flagTrainingDataset=False, savefolder=""):
     """
     It evaluates the network on the validation set.  
     :param dataloader: Pytorch DataLoader to load the dataset for the evaluation.
@@ -71,9 +73,6 @@ def evaluateNetwork(dataset, dataloader, weights, nclasses, net, flagTrainingDat
 
     net.eval()  # set the network in evaluation mode
 
-
-    class_weights = torch.FloatTensor(weights).cuda()
-    lossfn = nn.CrossEntropyLoss(weight=class_weights, ignore_index=-1)
     batch_size = dataloader.batch_size
 
     CM = np.zeros((nclasses, nclasses), dtype=int)
@@ -98,8 +97,10 @@ def evaluateNetwork(dataset, dataloader, weights, nclasses, net, flagTrainingDat
             # predictions size --> N x H x W
             values, predictions_t = torch.max(outputs, 1)
 
-            loss = lossfn(outputs, labels_batch)
-            loss_values.append(loss)
+            loss = computeLoss(loss_to_use, CEloss, w_for_GDL, tversky_loss_alpha, tversky_loss_beta, focal_tversky_gamma,
+                               epoch, epochs_switch, epochs_transition, labels_batch, outputs)
+
+            loss_values.append(loss.item())
 
             pred_cpu = predictions_t.cpu()
             labels_cpu = labels_batch.cpu()
@@ -184,10 +185,44 @@ def writeClassifierInfo(filename, classifier_name, dataset):
     f.close()
 
 
+def computeLoss(loss_name, CE, w_for_GDL, tversky_alpha, tversky_beta, focal_tversky_gamma,
+                epoch, epochs_switch, epochs_transition, labels, predictions):
+    """
+    Compute the loss given its name.
+    """
+
+    if loss_name == "CROSSENTROPY":
+        loss = CE(predictions, labels)
+    elif loss_name == "DICE":
+        loss = losses.GDL(predictions, labels, w_for_GDL)
+    elif loss_name == "BOUNDARY":
+        loss = losses.surface_loss(labels, predictions)
+    elif loss_name == "DICE+BOUNDARY":
+        if epoch >= epochs_switch:
+            alpha = 1.0 - (float(epoch - epochs_switch) / float(epochs_transition))
+            if alpha < 0.0:
+                alpha = 0.0
+            loss = alpha * losses.GDL(predictions, labels, w_for_GDL) + (1.0 - alpha) * losses.surface_loss(labels, predictions)
+        else:
+            loss = losses.GDL(predictions, labels, w_for_GDL)
+    elif loss_name == "FOCAL TVERSKY":
+        loss = losses.focal_tversky(predictions, labels, tversky_alpha, tversky_beta, focal_tversky_gamma)
+    elif loss_name == "FOCAL+BOUNDARY":
+        if epoch >= epochs_switch:
+            alpha = 1.0 - (float(epoch - epochs_switch) / float(epochs_transition))
+            if alpha < 0.0:
+                alpha = 0.0
+            loss = alpha * losses.focal_tversky(predictions, labels, tversky_alpha, tversky_beta,
+                                                focal_tversky_gamma) + (1.0 - alpha) * losses.surface_loss(labels, predictions)
+        else:
+            loss = losses.focal_tversky(predictions, labels, tversky_alpha, tversky_beta, focal_tversky_gamma)
+
+    return loss
+
 def trainingNetwork(images_folder_train, labels_folder_train, images_folder_val, labels_folder_val,
                     dictionary, target_classes, num_classes, save_network_as, save_classifier_as, classifier_name,
                     epochs, batch_sz, batch_mult, learning_rate, L2_penalty, validation_frequency, loss_to_use,
-                    epochs_switch, epoch_transition, tversky_alpha, tversky_gamma, optimiz, flagShuffle, experiment_name):
+                    epochs_switch, epochs_transition, tversky_alpha, tversky_gamma, optimiz, flagShuffle, experiment_name):
 
     ##### DATA #####
 
@@ -235,15 +270,7 @@ def trainingNetwork(images_folder_train, labels_folder_train, images_folder_val,
     net.load_state_dict(state['state_dict'], strict=False)
     print("NETWORK USED: DEEPLAB V3+")
 
-    # LOSS
-
-    weights = datasetTrain.weights
-    class_weights = torch.FloatTensor(weights).cuda()
-    lossfn = nn.CrossEntropyLoss(weight=class_weights, ignore_index=-1)
-
-
     # OPTIMIZER
-
     if optimiz == "SGD":
         optimizer = optim.SGD(net.parameters(), lr=learning_rate, weight_decay=L2_penalty, momentum=0.9)
     else:
@@ -265,18 +292,23 @@ def trainingNetwork(images_folder_train, labels_folder_train, images_folder_val,
     best_accuracy = 0.0
     best_jaccard_score = 0.0
 
-    # weights for GENERALIZED DICE LOSS
+
+    # Crossentropy loss
+    weights = datasetTrain.weights
+    class_weights = torch.FloatTensor(weights).cuda()
+    CEloss = nn.CrossEntropyLoss(weight=class_weights, ignore_index=-1)
+
+    # weights for GENERALIZED DICE LOSS (GDL)
     freq = 1.0 / datasetTrain.weights[1:]
     w = 1.0 / (freq * freq)
     w = w / w.sum() + 0.00001
     w_for_GDL = torch.from_numpy(w)
     w_for_GDL = w_for_GDL.to(device)
 
+    # Focal Tversky loss
     focal_tversky_gamma = torch.tensor(tversky_gamma)
     focal_tversky_gamma = focal_tversky_gamma.to(device)
 
-    #tversky_loss_alpha = torch.tensor(0.7)
-    #tversky_loss_beta = torch.tensor(0.3)
     tversky_loss_alpha = torch.tensor(tversky_alpha)
     tversky_loss_beta = torch.tensor(1.0 - tversky_alpha)
     tversky_loss_alpha = tversky_loss_alpha.to(device)
@@ -303,37 +335,8 @@ def trainingNetwork(images_folder_train, labels_folder_train, images_folder_val,
             # forward+loss+backward
             outputs = net(images_batch)
 
-            if loss_to_use == "CROSSENTROPY":
-                loss = lossfn(outputs, labels_batch)
-            elif loss_to_use == "DICE":
-                loss = losses.GDL(outputs, labels_batch, w_for_GDL)
-            elif loss_to_use == "BOUNDARY":
-                loss = losses.surface_loss(labels_batch, outputs)
-            elif loss_to_use == "DICE+BOUNDARY":
-
-                if epoch >= epochs_switch:
-                    alpha = 1.0 - (float(epoch - epochs_switch) / float(epoch_transition))
-                    if alpha < 0.0:
-                        alpha = 0.0
-                    loss = alpha * losses.GDL(outputs, labels_batch, w_for_GDL) + (1.0 - alpha) * losses.surface_loss(labels_batch, outputs)
-                else:
-                    loss = losses.GDL(outputs, labels_batch, w_for_GDL)
-
-            elif loss_to_use == "FOCAL_TVERSKY":
-
-                loss = losses.focal_tversky(outputs, labels_batch, tversky_loss_alpha, tversky_loss_beta, focal_tversky_gamma)
-
-            elif loss_to_use == "FOCAL+BOUNDARY":
-
-                if epoch >= epochs_switch:
-                    alpha = 1.0 - (float(epoch - epochs_switch) / float(epoch_transition))
-                    if alpha < 0.0:
-                        alpha = 0.0
-                    loss = alpha * losses.focal_tversky(outputs, labels_batch, tversky_loss_alpha, tversky_loss_beta,
-                                                        focal_tversky_gamma) + (1.0 - alpha) * losses.surface_loss(labels_batch, outputs)
-                else:
-                    loss = losses.focal_tversky(outputs, labels_batch, tversky_loss_alpha, tversky_loss_beta,
-                                                focal_tversky_gamma)
+            loss = computeLoss(loss_to_use, CEloss, w_for_GDL, tversky_loss_alpha, tversky_loss_beta, focal_tversky_gamma,
+                               epoch, epochs_switch, epochs_transition, labels_batch, outputs)
 
             loss.backward()
 
@@ -352,13 +355,19 @@ def trainingNetwork(images_folder_train, labels_folder_train, images_folder_val,
 
             print("RUNNING VALIDATION.. ", end='')
 
-            metrics_val, mean_loss_val = evaluateNetwork(datasetVal, dataloaderVal, datasetVal.weights, datasetVal.num_classes, net, flagTrainingDataset=False)
+            metrics_val, mean_loss_val = evaluateNetwork(datasetVal, dataloaderVal, loss_to_use, CEloss, w_for_GDL,
+                                                         tversky_loss_alpha, tversky_loss_beta, focal_tversky_gamma,
+                                                         epoch, epochs_switch, epochs_transition,
+                                                         datasetVal.num_classes, net, flagTrainingDataset=False)
             accuracy = metrics_val['Accuracy']
             jaccard_score = metrics_val['JaccardScore']
 
             scheduler.step(mean_loss_val)
 
-            metrics_train, mean_loss_train = evaluateNetwork(datasetTrain, dataloaderTrain, datasetTrain.weights, datasetTrain.num_classes, net, flagTrainingDataset=True)
+            metrics_train, mean_loss_train = evaluateNetwork(datasetTrain, dataloaderTrain, loss_to_use, CEloss, w_for_GDL,
+                                                             tversky_loss_alpha, tversky_loss_beta, focal_tversky_gamma,
+                                                             epoch, epochs_switch, epochs_transition,
+                                                             datasetTrain.num_classes, net, flagTrainingDataset=True)
             accuracy_training = metrics_train['Accuracy']
             jaccard_training = metrics_train['JaccardScore']
 
@@ -511,7 +520,7 @@ def main():
                         save_classifier_as=save_classifier_as, classifier_name=classifier_name,
                         epochs=NEPOCHS, batch_sz=BATCH_SIZE, batch_mult=BATCH_MULTIPLIER,
                         validation_frequency=VAL_FREQ, loss_to_use=LOSS_TO_USE,
-                        epochs_switch=GDL_BOUNDARY_EPOCH_SWITCH, epoch_transition=GDL_BOUNDARY_EPOCH_TRANSITION,
+                        epochs_switch=GDL_BOUNDARY_EPOCH_SWITCH, epochs_transition=GDL_BOUNDARY_EPOCH_TRANSITION,
                         learning_rate=LR, L2_penalty=L2, tversky_alpha=TVERSKY_ALPHA, tversky_gamma=TVERSKY_GAMMA,
                         optimiz=OPTIMIZER, flagShuffle=True, experiment_name=experiment_name)
 
