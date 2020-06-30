@@ -2,7 +2,7 @@ import torch
 from torch.autograd import Variable
 import numpy as np
 from scipy.ndimage import distance_transform_edt as distance
-
+from math import tanh
 
 ###############################################################################
 # SURFACE LOSS
@@ -44,7 +44,9 @@ def surface_loss(y_true, y_pred):
 
         loss += dist_maps_tensor * y_pred_prob[i]
 
-    return loss.mean()
+    #return tanh(loss.mean() / 20.0)  # our corrections
+    return loss.mean() / 20.0         # our corrections
+    #return loss.mean()               # original boundary loss
 
 
 ###############################################################################
