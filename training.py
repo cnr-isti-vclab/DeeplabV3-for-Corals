@@ -51,7 +51,7 @@ def saveMetrics(metrics, filename):
 # VALIDATION
 def evaluateNetwork(dataset, dataloader, loss_to_use, CEloss, w_for_GDL, tversky_loss_alpha, tversky_loss_beta,
                     focal_tversky_gamma, epoch, epochs_switch, epochs_transition, nclasses, net,
-                    flagTrainingDataset=False, savefolder=""):
+                    flag_compute_mIoU=False, savefolder=""):
     """
     It evaluates the network on the validation set.  
     :param dataloader: Pytorch DataLoader to load the dataset for the evaluation.
@@ -108,7 +108,7 @@ def evaluateNetwork(dataset, dataloader, loss_to_use, CEloss, w_for_GDL, tversky
             pred_cpu = predictions_t.cpu()
             labels_cpu = labels_batch.cpu()
 
-            if not flagTrainingDataset:
+            if flag_compute_mIoU:
                 ypred_list.extend(pred_cpu.numpy().ravel())
                 ytrue_list.extend(labels_cpu.numpy().ravel())
 
@@ -131,7 +131,7 @@ def evaluateNetwork(dataset, dataloader, loss_to_use, CEloss, w_for_GDL, tversky
 
     jaccard_s = 0.0
 
-    if not flagTrainingDataset:
+    if flag_compute_mIoU:
         ypred = np.array(ypred_list)
         del ypred_list
         ytrue = np.array(ytrue_list)
@@ -222,6 +222,95 @@ def computeLoss(loss_name, CE, w_for_GDL, tversky_alpha, tversky_beta, focal_tve
 
     return loss
 
+def computeBoundaryLossRange(images_folder_train, labels_folder_train, images_folder_val, labels_folder_val,
+                    dictionary, target_classes, num_classes, save_network_as, save_classifier_as, classifier_name,
+                    epochs, batch_sz, batch_mult, learning_rate, L2_penalty, validation_frequency, loss_to_use,
+                    epochs_switch, epochs_transition, tversky_alpha, tversky_gamma, optimiz, flagShuffle, experiment_name):
+
+    ##### DATA #####
+
+    # setup the training dataset
+    datasetTrain = CoralsDataset(images_folder_train, labels_folder_train, dictionary, target_classes, num_classes)
+
+    print("Dataset setup..", end='')
+    datasetTrain.computeAverage()
+    datasetTrain.computeWeights()
+    print(datasetTrain.dict_target)
+    print(datasetTrain.weights)
+    freq = 1.0 / datasetTrain.weights
+    print(freq)
+    print("done.")
+
+    writeClassifierInfo(save_classifier_as, classifier_name, datasetTrain)
+
+    datasetTrain.enableAugumentation()
+
+    datasetVal = CoralsDataset(images_folder_val, labels_folder_val, dictionary, target_classes, num_classes)
+    datasetVal.dataset_average = datasetTrain.dataset_average
+    datasetVal.weights = datasetTrain.weights
+
+    #AUGUMENTATION IS NOT APPLIED ON THE VALIDATION SET
+    datasetVal.disableAugumentation()
+
+    # setup the data loader
+    dataloaderTrain = DataLoader(datasetTrain, batch_size=batch_sz, shuffle=flagShuffle, num_workers=0, drop_last=True,
+                                 pin_memory=True)
+
+    validation_batch_size = 4
+    dataloaderVal = DataLoader(datasetVal, batch_size=validation_batch_size, shuffle=False, num_workers=0, drop_last=True,
+                                 pin_memory=True)
+
+    training_images_number = len(datasetTrain.images_names)
+    validation_images_number = len(datasetVal.images_names)
+
+    USE_CUDA = torch.cuda.is_available()
+    if USE_CUDA:
+        device = torch.device("cuda")
+
+    print("Evaluate Boundary Loss range:")
+    loss_values = []
+    for epoch in range(1):  # loop over the dataset multiple times
+
+        running_loss = 0.0
+        for i, minibatch in enumerate(dataloaderVal):
+            # get the inputs
+            images_batch = minibatch['image']
+            labels_batch = minibatch['labels']
+
+            if USE_CUDA:
+                images_batch = images_batch.to(device)
+                labels_batch = labels_batch.to(device)
+
+            loss = losses.surface_loss_fake(labels_batch, num_classes)
+
+            loss_values.append(loss.item())
+            print(loss.item())
+
+    print("Min:", min(loss_values))
+    print("Max:", max(loss_values))
+
+    loss_values = []
+    for epoch in range(1):  # loop over the dataset multiple times
+
+        running_loss = 0.0
+        for i, minibatch in enumerate(dataloaderTrain):
+            # get the inputs
+            images_batch = minibatch['image']
+            labels_batch = minibatch['labels']
+
+            if USE_CUDA:
+                images_batch = images_batch.to(device)
+                labels_batch = labels_batch.to(device)
+
+            loss = losses.surface_loss_fake(labels_batch, num_classes)
+
+            loss_values.append(loss.item())
+            print(loss.item())
+
+    print("Min:", min(loss_values))
+    print("Max:", max(loss_values))
+
+
 def trainingNetwork(images_folder_train, labels_folder_train, images_folder_val, labels_folder_val,
                     dictionary, target_classes, num_classes, save_network_as, save_classifier_as, classifier_name,
                     epochs, batch_sz, batch_mult, learning_rate, L2_penalty, validation_frequency, loss_to_use,
@@ -263,21 +352,29 @@ def trainingNetwork(images_folder_train, labels_folder_train, images_folder_val,
     training_images_number = len(datasetTrain.images_names)
     validation_images_number = len(datasetVal.images_names)
 
-    ###### SETUP THE NETWORK #####
-    net = DeepLab(backbone='resnet', output_stride=16, num_classes=datasetTrain.num_classes)
-    state = torch.load("deeplab-resnet.pth.tar")
-    # RE-INIZIALIZE THE CLASSIFICATION LAYER WITH THE RIGHT NUMBER OF CLASSES, DON'T LOAD WEIGHTS OF THE CLASSIFICATION LAYER
-    new_dictionary = state['state_dict']
-    del new_dictionary['decoder.last_conv.8.weight']
-    del new_dictionary['decoder.last_conv.8.bias']
-    net.load_state_dict(state['state_dict'], strict=False)
     print("NETWORK USED: DEEPLAB V3+")
+
+    if os.path.exists(save_network_as):
+        net = DeepLab(backbone='resnet', output_stride=16, num_classes=datasetTrain.num_classes)
+        net.load_state_dict(torch.load(save_network_as))
+        print("Checkpoint loaded.")
+    else:
+        ###### SETUP THE NETWORK #####
+        net = DeepLab(backbone='resnet', output_stride=16, num_classes=datasetTrain.num_classes)
+        state = torch.load("deeplab-resnet.pth.tar")
+        # RE-INIZIALIZE THE CLASSIFICATION LAYER WITH THE RIGHT NUMBER OF CLASSES, DON'T LOAD WEIGHTS OF THE CLASSIFICATION LAYER
+        new_dictionary = state['state_dict']
+        del new_dictionary['decoder.last_conv.8.weight']
+        del new_dictionary['decoder.last_conv.8.bias']
+        net.load_state_dict(state['state_dict'], strict=False)
 
     # OPTIMIZER
     if optimiz == "SGD":
         optimizer = optim.SGD(net.parameters(), lr=learning_rate, weight_decay=L2_penalty, momentum=0.9)
-    else:
+    elif optimiz == "ADAM":
         optimizer = optim.Adam(net.parameters(), lr=learning_rate, weight_decay=L2_penalty)
+    elif optimiz == "QHADAM":
+        pass
 
     USE_CUDA = torch.cuda.is_available()
 
@@ -361,7 +458,7 @@ def trainingNetwork(images_folder_train, labels_folder_train, images_folder_val,
             metrics_val, mean_loss_val = evaluateNetwork(datasetVal, dataloaderVal, loss_to_use, CEloss, w_for_GDL,
                                                          tversky_loss_alpha, tversky_loss_beta, focal_tversky_gamma,
                                                          epoch, epochs_switch, epochs_transition,
-                                                         datasetVal.num_classes, net, flagTrainingDataset=False)
+                                                         datasetVal.num_classes, net, flag_compute_mIoU=False)
             accuracy = metrics_val['Accuracy']
             jaccard_score = metrics_val['JaccardScore']
 
@@ -370,7 +467,7 @@ def trainingNetwork(images_folder_train, labels_folder_train, images_folder_val,
             metrics_train, mean_loss_train = evaluateNetwork(datasetTrain, dataloaderTrain, loss_to_use, CEloss, w_for_GDL,
                                                              tversky_loss_alpha, tversky_loss_beta, focal_tversky_gamma,
                                                              epoch, epochs_switch, epochs_transition,
-                                                             datasetTrain.num_classes, net, flagTrainingDataset=True)
+                                                             datasetTrain.num_classes, net, flag_compute_mIoU=False)
             accuracy_training = metrics_train['Accuracy']
             jaccard_training = metrics_train['JaccardScore']
 
@@ -379,7 +476,8 @@ def trainingNetwork(images_folder_train, labels_folder_train, images_folder_val,
             writer.add_scalar('Accuracy/train', accuracy_training, epoch)
             writer.add_scalar('Accuracy/validation', accuracy, epoch)
 
-            if jaccard_score > best_jaccard_score:
+            #if jaccard_score > best_jaccard_score:
+            if accuracy > best_accuracy:
 
                 best_accuracy = accuracy
                 best_jaccard_score = jaccard_score
@@ -391,6 +489,21 @@ def trainingNetwork(images_folder_train, labels_folder_train, images_folder_val,
                 saveMetrics(metrics_train, metrics_filename)
 
             print("-> CURRENT BEST ACCURACY ", best_accuracy)
+
+
+    # main loop ended - reload it and evaluate mIoU
+    torch.cuda.empty_cache()
+    del net
+    net = None
+
+    print("Final evaluation..")
+    net = DeepLab(backbone='resnet', output_stride=16, num_classes=datasetTrain.num_classes)
+    net.load_state_dict(torch.load(save_network_as))
+
+    metrics_val, mean_loss_val = evaluateNetwork(datasetVal, dataloaderVal, loss_to_use, CEloss, w_for_GDL,
+                                                 tversky_loss_alpha, tversky_loss_beta, focal_tversky_gamma,
+                                                 epoch, epochs_switch, epochs_transition,
+                                                 datasetVal.num_classes, net, flag_compute_mIoU=True)
 
     writer.add_hparams({'LR': learning_rate, 'Decay': L2_penalty, 'Loss': loss_to_use, 'Transition': epochs_transition,
                         'Gamma': tversky_gamma, 'Alpha': tversky_alpha }, {'hparam/Accuracy': best_accuracy, 'hparam/mIoU': best_jaccard_score})
@@ -499,17 +612,22 @@ def main():
         BATCH_SIZE = row["BATCH_SIZE"]
         BATCH_MULTIPLIER = row["BATCH_MULTIPLIER"]
         LOSS_TO_USE = row["LOSS_TO_USE"]
+        # quando comincia a cambiare, 20 = alla epoch 20 comincia a cambiare
         GDL_BOUNDARY_EPOCH_SWITCH = row["GDL_BOUNDARY_EPOCH_SWITCH"]
+        # in quante epoche completa la transizione (separate)
         GDL_BOUNDARY_EPOCH_TRANSITION = row["GDL_BOUNDARY_EPOCH_TRANSITION"]
         TVERSKY_ALPHA = row["TVERSKY_ALPHA"]
         TVERSKY_GAMMA = row["TVERSKY_GAMMA"]
         OPTIMIZER = row["OPTIMIZER"]
 
-        params = "LR=" + str(LR) + "_L2=" + str(L2) + "_BS=" + str(BATCH_SIZE) + "x" + str(BATCH_MULTIPLIER) + "_loss=" + LOSS_TO_USE
+        params = "LR=" + str(LR) + "_L2=" + str(L2) + "_BS=" + str(BATCH_SIZE) + "x" + str(BATCH_MULTIPLIER) \
+                 + "_loss=" + LOSS_TO_USE
         if LOSS_TO_USE == "DICE+BOUNDARY":
-            params = params + "_TRANSITION=" + str(GDL_BOUNDARY_EPOCH_TRANSITION)
+            params = params + "_SW=" + str(GDL_BOUNDARY_EPOCH_SWITCH) + "_TR=" + str(GDL_BOUNDARY_EPOCH_TRANSITION)
         elif LOSS_TO_USE == "FOCAL_TVERSKY":
             params = params + "_ALPHA=" + str(TVERSKY_ALPHA) + "_GAMMA=" + str(TVERSKY_GAMMA)
+
+        params = params + "_OPT=" + OPTIMIZER
 
         network_name = "DEEPLAB_" + params + ".net"
 
@@ -519,7 +637,17 @@ def main():
         classifier_name = "Coral 6-classes"
 
         ##### TRAINING
-        trainingNetwork(images_dir_train, labels_dir_train, images_dir_val, labels_dir_val,
+        # trainingNetwork(images_dir_train, labels_dir_train, images_dir_val, labels_dir_val,
+        #                 dictionary, target_classes, num_classes=NCLASSES, save_network_as=network_name,
+        #                 save_classifier_as=save_classifier_as, classifier_name=classifier_name,
+        #                 epochs=NEPOCHS, batch_sz=BATCH_SIZE, batch_mult=BATCH_MULTIPLIER,
+        #                 validation_frequency=VAL_FREQ, loss_to_use=LOSS_TO_USE,
+        #                 epochs_switch=GDL_BOUNDARY_EPOCH_SWITCH, epochs_transition=GDL_BOUNDARY_EPOCH_TRANSITION,
+        #                 learning_rate=LR, L2_penalty=L2, tversky_alpha=TVERSKY_ALPHA, tversky_gamma=TVERSKY_GAMMA,
+        #                 optimiz=OPTIMIZER, flagShuffle=True, experiment_name=experiment_name)
+
+        # service function to compute the rangee of the Boundary loss on the training and the validation set
+        computeBoundaryLossRange(images_dir_train, labels_dir_train, images_dir_val, labels_dir_val,
                         dictionary, target_classes, num_classes=NCLASSES, save_network_as=network_name,
                         save_classifier_as=save_classifier_as, classifier_name=classifier_name,
                         epochs=NEPOCHS, batch_sz=BATCH_SIZE, batch_mult=BATCH_MULTIPLIER,

@@ -23,6 +23,25 @@ def one_hot2dist(seg):
     return res
 
 
+
+def surface_loss_fake(y_true, n_classes):
+
+    N = y_true.shape[0]
+
+    y_true_onehot = make_one_hot(y_true, n_classes)
+    y_true_onehot_numpy = y_true_onehot.cpu().numpy()
+
+    loss = 0.0
+    for i in range(N):
+
+        dist_maps = one_hot2dist(y_true_onehot_numpy[i])  # it works on a numpy array
+        dist_maps_tensor = torch.from_numpy(dist_maps).to(torch.float32)
+        dist_maps_tensor = dist_maps_tensor.to(device='cuda:0')
+        loss += dist_maps_tensor * y_true_onehot[i]
+
+    return loss.mean()
+
+
 def surface_loss(y_true, y_pred):
 
     n_classes = y_pred.shape[1]
