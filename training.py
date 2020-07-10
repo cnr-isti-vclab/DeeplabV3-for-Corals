@@ -637,17 +637,7 @@ def main():
         classifier_name = "Coral 6-classes"
 
         ##### TRAINING
-        # trainingNetwork(images_dir_train, labels_dir_train, images_dir_val, labels_dir_val,
-        #                 dictionary, target_classes, num_classes=NCLASSES, save_network_as=network_name,
-        #                 save_classifier_as=save_classifier_as, classifier_name=classifier_name,
-        #                 epochs=NEPOCHS, batch_sz=BATCH_SIZE, batch_mult=BATCH_MULTIPLIER,
-        #                 validation_frequency=VAL_FREQ, loss_to_use=LOSS_TO_USE,
-        #                 epochs_switch=GDL_BOUNDARY_EPOCH_SWITCH, epochs_transition=GDL_BOUNDARY_EPOCH_TRANSITION,
-        #                 learning_rate=LR, L2_penalty=L2, tversky_alpha=TVERSKY_ALPHA, tversky_gamma=TVERSKY_GAMMA,
-        #                 optimiz=OPTIMIZER, flagShuffle=True, experiment_name=experiment_name)
-
-        # service function to compute the rangee of the Boundary loss on the training and the validation set
-        computeBoundaryLossRange(images_dir_train, labels_dir_train, images_dir_val, labels_dir_val,
+        trainingNetwork(images_dir_train, labels_dir_train, images_dir_val, labels_dir_val,
                         dictionary, target_classes, num_classes=NCLASSES, save_network_as=network_name,
                         save_classifier_as=save_classifier_as, classifier_name=classifier_name,
                         epochs=NEPOCHS, batch_sz=BATCH_SIZE, batch_mult=BATCH_MULTIPLIER,
@@ -655,6 +645,16 @@ def main():
                         epochs_switch=GDL_BOUNDARY_EPOCH_SWITCH, epochs_transition=GDL_BOUNDARY_EPOCH_TRANSITION,
                         learning_rate=LR, L2_penalty=L2, tversky_alpha=TVERSKY_ALPHA, tversky_gamma=TVERSKY_GAMMA,
                         optimiz=OPTIMIZER, flagShuffle=True, experiment_name=experiment_name)
+
+        # service function to compute the rangee of the Boundary loss on the training and the validation set
+        # computeBoundaryLossRange(images_dir_train, labels_dir_train, images_dir_val, labels_dir_val,
+        #                 dictionary, target_classes, num_classes=NCLASSES, save_network_as=network_name,
+        #                 save_classifier_as=save_classifier_as, classifier_name=classifier_name,
+        #                 epochs=NEPOCHS, batch_sz=BATCH_SIZE, batch_mult=BATCH_MULTIPLIER,
+        #                 validation_frequency=VAL_FREQ, loss_to_use=LOSS_TO_USE,
+        #                 epochs_switch=GDL_BOUNDARY_EPOCH_SWITCH, epochs_transition=GDL_BOUNDARY_EPOCH_TRANSITION,
+        #                 learning_rate=LR, L2_penalty=L2, tversky_alpha=TVERSKY_ALPHA, tversky_gamma=TVERSKY_GAMMA,
+        #                 optimiz=OPTIMIZER, flagShuffle=True, experiment_name=experiment_name)
 
         ##### TEST
 
