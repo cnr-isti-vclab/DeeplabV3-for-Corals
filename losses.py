@@ -63,8 +63,10 @@ def surface_loss(y_true, y_pred):
 
         loss += dist_maps_tensor * y_pred_prob[i]
 
-    #return tanh(loss.mean() / 20.0)  # our corrections
-    return loss.mean() / 20.0         # our corrections
+    xmin = torch.tensor(-90.0)
+    xmax = torch.tensor(90.0)
+
+    return (loss.mean() - xmin) / (xmax - xmin)        # our corrections
     #return loss.mean()               # original boundary loss
 
 
