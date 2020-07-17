@@ -205,10 +205,15 @@ def computeLoss(loss_name, CE, w_for_GDL, tversky_alpha, tversky_beta, focal_tve
             alpha = 1.0 - (float(epoch - epochs_switch) / float(epochs_transition))
             if alpha < 0.0:
                 alpha = 0.0
-            loss = alpha * losses.GDL(predictions, labels, w_for_GDL) + (1.0 - alpha) * losses.surface_loss(labels, predictions)
+            GDL = losses.GDL(predictions, labels, w_for_GDL)
+            B = losses.surface_loss(labels, predictions)
+            loss = alpha * GDL + (1.0 - alpha) * B
+
+            str = "Alpha={:.4f}, GDL={:.4f}, Boundary={:.4f}, loss={:.4f}".format(alpha, GDL, B, loss)
+            print(str)
         else:
             loss = losses.GDL(predictions, labels, w_for_GDL)
-    elif loss_name == "FOCAL TVERSKY":
+    elif loss_name == "FOCAL_TVERSKY":
         loss = losses.focal_tversky(predictions, labels, tversky_alpha, tversky_beta, focal_tversky_gamma)
     elif loss_name == "FOCAL+BOUNDARY":
         if epoch >= epochs_switch:
@@ -221,6 +226,7 @@ def computeLoss(loss_name, CE, w_for_GDL, tversky_alpha, tversky_beta, focal_tve
             loss = losses.focal_tversky(predictions, labels, tversky_alpha, tversky_beta, focal_tversky_gamma)
 
     return loss
+
 
 def computeBoundaryLossRange(images_folder_train, labels_folder_train, images_folder_val, labels_folder_val,
                     dictionary, target_classes, num_classes, save_network_as, save_classifier_as, classifier_name,
@@ -284,10 +290,10 @@ def computeBoundaryLossRange(images_folder_train, labels_folder_train, images_fo
             loss = losses.surface_loss_fake(labels_batch, num_classes)
 
             loss_values.append(loss.item())
-            print(loss.item())
 
-    print("Min:", min(loss_values))
-    print("Max:", max(loss_values))
+    print("(Validation) Min:", min(loss_values))
+    print("(Validation) Mean:", sum(loss_values) / len(loss_values))
+    print("(Validation) Max:", max(loss_values))
 
     loss_values = []
     for epoch in range(1):  # loop over the dataset multiple times
@@ -305,10 +311,10 @@ def computeBoundaryLossRange(images_folder_train, labels_folder_train, images_fo
             loss = losses.surface_loss_fake(labels_batch, num_classes)
 
             loss_values.append(loss.item())
-            print(loss.item())
 
-    print("Min:", min(loss_values))
-    print("Max:", max(loss_values))
+    print("(Training) Min:", min(loss_values))
+    print("(Training) Mean:", sum(loss_values) / len(loss_values))
+    print("(Training) Max:", max(loss_values))
 
 
 def trainingNetwork(images_folder_train, labels_folder_train, images_folder_val, labels_folder_val,
@@ -387,7 +393,12 @@ def trainingNetwork(images_folder_train, labels_folder_train, images_folder_val,
     # Writer will output to ./runs/ directory by default
     writer = SummaryWriter(comment=experiment_name)
 
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=2, verbose=True)
+    reduce_lr_patience = 2
+    if loss_to_use == "DICE+BOUNDARY":
+        reduce_lr_patience = 200
+        print("patience increased !")
+
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=reduce_lr_patience, verbose=True)
 
     best_accuracy = 0.0
     best_jaccard_score = 0.0
@@ -422,7 +433,7 @@ def trainingNetwork(images_folder_train, labels_folder_train, images_folder_val,
 
         writer.add_scalar('LR/train', optimizer.param_groups[0]['lr'], epoch)
 
-        running_loss = 0.0
+        loss_values = []
         for i, minibatch in enumerate(dataloaderTrain):
             # get the inputs
             images_batch = minibatch['image']
@@ -446,9 +457,11 @@ def trainingNetwork(images_folder_train, labels_folder_train, images_folder_val,
                 optimizer.zero_grad()
 
             print(epoch, i, loss.item())
-            running_loss += loss.item()
+            loss_values.append(loss.item())
 
-        print("Epoch: %d , Running loss = %f" % (epoch, running_loss))
+        mean_loss_train = sum(loss_values) / len(loss_values)
+        print("Epoch: %d , Mean loss = %f" % (epoch, mean_loss_train))
+        writer.add_scalar('Loss/train', mean_loss_train, epoch)
 
         ### VALIDATION ###
         if epoch > 0 and (epoch+1) % validation_frequency == 0:
@@ -567,14 +580,16 @@ def main():
 
 
     # DATASET FOLDERS
-    images_dir_train = "D:\\ten-orthos-scripps\\mini_train_im"
-    labels_dir_train = "D:\\ten-orthos-scripps\\mini_train_lab"
+    root_dir = "D:\\ten-orthos-scripps"
 
-    images_dir_val = "D:\\ten-orthos-scripps\\mini_val_im"
-    labels_dir_val = "D:\\ten-orthos-scripps\\mini_val_lab"
+    images_dir_train = root_dir + '/' + "train_im"
+    labels_dir_train = root_dir + '/' + "train_lab"
 
-    images_dir_test = "D:\\ten-orthos-scripps\\mini_test_im"
-    labels_dir_test = "D:\\ten-orthos-scripps\\mini_test_lab"
+    images_dir_val = root_dir + '/' + "val_im"
+    labels_dir_val = root_dir + '/' + "val_lab"
+
+    images_dir_test = root_dir + '/' + "test_im"
+    labels_dir_test = root_dir + '/' + "test_lab"
 
     # LOAD EXPERIMENTS
 
