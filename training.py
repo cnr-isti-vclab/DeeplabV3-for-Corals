@@ -17,6 +17,7 @@ from torch.utils.tensorboard import SummaryWriter
 import losses
 from torch.autograd import Variable
 import pandas as pd
+from qhoptim.pyt import QHAdam
 
 # SEED
 torch.manual_seed(997)
@@ -31,20 +32,14 @@ def saveMetrics(metrics, filename):
     """
 
     file = open(filename, 'w')
-
     file.write("CONFUSION MATRIX: \n\n")
-
     np.savetxt(file, metrics['ConfMatrix'], fmt='%d')
     file.write("\n")
-
     file.write("NORMALIZED CONFUSION MATRIX: \n\n")
-
     np.savetxt(file, metrics['NormConfMatrix'], fmt='%.3f')
     file.write("\n")
-
     file.write("ACCURACY      : %.3f\n\n" % metrics['Accuracy'])
     file.write("Jaccard Score : %.3f\n\n" % metrics['JaccardScore'])
-
     file.close()
 
 
@@ -141,6 +136,7 @@ def evaluateNetwork(dataset, dataloader, loss_to_use, CEloss, w_for_GDL, tversky
     # NORMALIZED CONFUSION MATRIX
     sum_row = CM.sum(axis=1)
     sum_row = sum_row.reshape((nclasses, 1))   # transform into column vector
+    sum_row = sum_row + 1
     CMnorm = CM / sum_row    # divide each row using broadcasting
 
 
@@ -148,7 +144,6 @@ def evaluateNetwork(dataset, dataloader, loss_to_use, CEloss, w_for_GDL, tversky
     pixels_total = CM.sum()
     pixels_correct = np.sum(np.diag(CM))
     accuracy = float(pixels_correct) / float(pixels_total)
-
 
     metrics = {'ConfMatrix': CM, 'NormConfMatrix': CMnorm, 'Accuracy': accuracy, 'JaccardScore': jaccard_s}
 
@@ -169,8 +164,10 @@ def readClassifierInfo(filename, dataset):
     dataset.dataset_average = np.array(loaded_dict["Average"])
     dataset.dict_target = loaded_dict["Classes"]
 
+    return loaded_dict["Output Classes"]
 
-def writeClassifierInfo(filename, classifier_name, dataset):
+
+def writeClassifierInfo(filename, classifier_name, dataset, output_classes):
 
     dict_to_save = {}
 
@@ -179,7 +176,7 @@ def writeClassifierInfo(filename, classifier_name, dataset):
     dict_to_save["Average"] = list(dataset.dataset_average)
     dict_to_save["Num. Classes"] = dataset.num_classes
     dict_to_save["Classes"] = dataset.dict_target
-
+    dict_to_save["Output Classes"] = output_classes
 
     str = json.dumps(dict_to_save)
 
@@ -318,14 +315,15 @@ def computeBoundaryLossRange(images_folder_train, labels_folder_train, images_fo
 
 
 def trainingNetwork(images_folder_train, labels_folder_train, images_folder_val, labels_folder_val,
-                    dictionary, target_classes, num_classes, save_network_as, save_classifier_as, classifier_name,
+                    dictionary, target_classes, output_classes, save_network_as, classifier_name,
                     epochs, batch_sz, batch_mult, learning_rate, L2_penalty, validation_frequency, loss_to_use,
-                    epochs_switch, epochs_transition, tversky_alpha, tversky_gamma, optimiz, flagShuffle, experiment_name):
+                    epochs_switch, epochs_transition, tversky_alpha, tversky_gamma, optimiz,
+                    flag_shuffle, flag_training_accuracy, experiment_name):
 
     ##### DATA #####
 
     # setup the training dataset
-    datasetTrain = CoralsDataset(images_folder_train, labels_folder_train, dictionary, target_classes, num_classes)
+    datasetTrain = CoralsDataset(images_folder_train, labels_folder_train, dictionary, target_classes)
 
     print("Dataset setup..", end='')
     datasetTrain.computeAverage()
@@ -336,11 +334,12 @@ def trainingNetwork(images_folder_train, labels_folder_train, images_folder_val,
     print(freq)
     print("done.")
 
-    writeClassifierInfo(save_classifier_as, classifier_name, datasetTrain)
+    save_classifier_as = save_network_as.replace(".net", ".json")
+    writeClassifierInfo(save_classifier_as, classifier_name, datasetTrain, output_classes)
 
     datasetTrain.enableAugumentation()
 
-    datasetVal = CoralsDataset(images_folder_val, labels_folder_val, dictionary, target_classes, num_classes)
+    datasetVal = CoralsDataset(images_folder_val, labels_folder_val, dictionary, target_classes)
     datasetVal.dataset_average = datasetTrain.dataset_average
     datasetVal.weights = datasetTrain.weights
 
@@ -348,7 +347,7 @@ def trainingNetwork(images_folder_train, labels_folder_train, images_folder_val,
     datasetVal.disableAugumentation()
 
     # setup the data loader
-    dataloaderTrain = DataLoader(datasetTrain, batch_size=batch_sz, shuffle=flagShuffle, num_workers=0, drop_last=True,
+    dataloaderTrain = DataLoader(datasetTrain, batch_size=batch_sz, shuffle=flag_shuffle, num_workers=0, drop_last=True,
                                  pin_memory=True)
 
     validation_batch_size = 4
@@ -361,12 +360,12 @@ def trainingNetwork(images_folder_train, labels_folder_train, images_folder_val,
     print("NETWORK USED: DEEPLAB V3+")
 
     if os.path.exists(save_network_as):
-        net = DeepLab(backbone='resnet', output_stride=16, num_classes=datasetTrain.num_classes)
+        net = DeepLab(backbone='resnet', output_stride=16, num_classes=output_classes)
         net.load_state_dict(torch.load(save_network_as))
         print("Checkpoint loaded.")
     else:
         ###### SETUP THE NETWORK #####
-        net = DeepLab(backbone='resnet', output_stride=16, num_classes=datasetTrain.num_classes)
+        net = DeepLab(backbone='resnet', output_stride=16, num_classes=output_classes)
         state = torch.load("deeplab-resnet.pth.tar")
         # RE-INIZIALIZE THE CLASSIFICATION LAYER WITH THE RIGHT NUMBER OF CLASSES, DON'T LOAD WEIGHTS OF THE CLASSIFICATION LAYER
         new_dictionary = state['state_dict']
@@ -380,7 +379,9 @@ def trainingNetwork(images_folder_train, labels_folder_train, images_folder_val,
     elif optimiz == "ADAM":
         optimizer = optim.Adam(net.parameters(), lr=learning_rate, weight_decay=L2_penalty)
     elif optimiz == "QHADAM":
-        pass
+        optimizer = QHAdam(net.parameters(), lr=learning_rate, weight_decay=L2_penalty,
+                           nus = (0.7, 1.0), betas = (0.99, 0.999))
+
 
     USE_CUDA = torch.cuda.is_available()
 
@@ -471,35 +472,40 @@ def trainingNetwork(images_folder_train, labels_folder_train, images_folder_val,
             metrics_val, mean_loss_val = evaluateNetwork(datasetVal, dataloaderVal, loss_to_use, CEloss, w_for_GDL,
                                                          tversky_loss_alpha, tversky_loss_beta, focal_tversky_gamma,
                                                          epoch, epochs_switch, epochs_transition,
-                                                         datasetVal.num_classes, net, flag_compute_mIoU=False)
+                                                         output_classes, net, flag_compute_mIoU=False)
             accuracy = metrics_val['Accuracy']
             jaccard_score = metrics_val['JaccardScore']
 
             scheduler.step(mean_loss_val)
 
-            metrics_train, mean_loss_train = evaluateNetwork(datasetTrain, dataloaderTrain, loss_to_use, CEloss, w_for_GDL,
-                                                             tversky_loss_alpha, tversky_loss_beta, focal_tversky_gamma,
-                                                             epoch, epochs_switch, epochs_transition,
-                                                             datasetTrain.num_classes, net, flag_compute_mIoU=False)
-            accuracy_training = metrics_train['Accuracy']
-            jaccard_training = metrics_train['JaccardScore']
+            accuracy_training = 0.0
+            jaccard_training = 0.0
 
-            writer.add_scalar('Loss/train', mean_loss_train, epoch)
+            if flag_training_accuracy is True:
+                metrics_train, mean_loss_train = evaluateNetwork(datasetTrain, dataloaderTrain, loss_to_use, CEloss, w_for_GDL,
+                                                                 tversky_loss_alpha, tversky_loss_beta, focal_tversky_gamma,
+                                                                 epoch, epochs_switch, epochs_transition,
+                                                                 output_classes, net, flag_compute_mIoU=False)
+                accuracy_training = metrics_train['Accuracy']
+                jaccard_training = metrics_train['JaccardScore']
+
+
+            #writer.add_scalar('Loss/train', mean_loss_train, epoch)
             writer.add_scalar('Loss/validation', mean_loss_val, epoch)
             writer.add_scalar('Accuracy/train', accuracy_training, epoch)
             writer.add_scalar('Accuracy/validation', accuracy, epoch)
 
             #if jaccard_score > best_jaccard_score:
             if accuracy > best_accuracy:
-
                 best_accuracy = accuracy
                 best_jaccard_score = jaccard_score
                 torch.save(net.state_dict(), save_network_as)
                 # performance of the best accuracy network on the validation dataset
                 metrics_filename = save_network_as[:len(save_network_as) - 4] + "-val-metrics.txt"
                 saveMetrics(metrics_val, metrics_filename)
-                metrics_filename = save_network_as[:len(save_network_as) - 4] + "-train-metrics.txt"
-                saveMetrics(metrics_train, metrics_filename)
+                if flag_training_accuracy is True:
+                    metrics_filename = save_network_as[:len(save_network_as) - 4] + "-train-metrics.txt"
+                    saveMetrics(metrics_train, metrics_filename)
 
             print("-> CURRENT BEST ACCURACY ", best_accuracy)
 
@@ -527,29 +533,30 @@ def trainingNetwork(images_folder_train, labels_folder_train, images_folder_val,
     print("BEST ACCURACY REACHED ON THE VALIDATION SET: %.3f " % best_accuracy)
 
 
-def testNetwork(images_folder, labels_folder, dictionary, target_classes, num_classes, classifier_info_filename, network_filename, output_folder):
+def testNetwork(images_folder, labels_folder, dictionary, target_classes, network_filename, output_folder):
     """
-    Load a network and test it on the test dataset.g
+    Load a network and test it on the test dataset.
     :param network_filename: Full name of the network to load (PATH+name)
     """
 
-
     # TEST DATASET
-    datasetTest = CoralsDataset(images_folder, labels_folder, dictionary,  target_classes, num_classes)
+    datasetTest = CoralsDataset(images_folder, labels_folder, dictionary, target_classes)
     datasetTest.disableAugumentation()
 
-    readClassifierInfo(classifier_info_filename, datasetTest)
+    classifier_info_filename = network_filename.replace(".net", ".json")
+    output_classes = readClassifierInfo(classifier_info_filename, datasetTest)
 
     batchSize = 4
     dataloaderTest = DataLoader(datasetTest, batch_size=batchSize, shuffle=False, num_workers=0, drop_last=True,
                             pin_memory=True)
+
     # DEEPLAB V3+
-    net = DeepLab(backbone='resnet', output_stride=16, num_classes=datasetTest.num_classes)
+    net = DeepLab(backbone='resnet', output_stride=16, num_classes=output_classes)
     net.load_state_dict(torch.load(network_filename))
     print("Weights loaded.")
 
     metrics_test, loss = evaluateNetwork(datasetTest, dataloaderTest, "NONE", None, [0.0], 0.0, 0.0, 0.0, 0, 0, 0,
-                                         datasetTest.num_classes, net, False, output_folder)
+                                         output_classes, net, True, output_folder)
     metrics_filename = network_filename[:len(network_filename) - 4] + "-test-metrics.txt"
     saveMetrics(metrics_test, metrics_filename)
     print("***** TEST FINISHED *****")
@@ -558,14 +565,48 @@ def testNetwork(images_folder, labels_folder, dictionary, target_classes, num_cl
 def main():
 
     # TARGET CLASSES
-    target_classes = {"Background": 0,
-                      "Pocillopora": 1,
-                      "Porite_massive": 2,
-                      "Montipora_plate/flabellata": 3,
-                      "Montipora_crust/patula": 4,
-                      "Montipora_capitata": 5
-                      }
 
+    # standard
+    # target_classes = {"Background": 0,
+    #                   "Pocillopora": 1,
+    #                   "Porite_massive": 2,
+    #                   "Montipora_plate/flabellata": 3,
+    #                   "Montipora_crust/patula": 4,
+    #                   "Montipora_capitata": 5
+    #                   }
+    # OUTPUT_CLASSES = 6
+
+    # porite binary classifier
+    target_classes = {
+        "Background": 0,
+        "Porites_branching": 1,
+        "Porite_massive": 1,
+        "Porites_rus": 1
+        }
+    OUTPUT_CLASSES = 2
+
+    # pocillopora binary classifier
+    # target_classes = {
+    #     "Background": 0,
+    #     "Pocillopora_zelli": 1,
+    #     "Pocillopora_eydouxi": 1,
+    #     "Pocillopora": 1,
+    #     "Pocillopora_damicornis": 1
+    #     }
+    # OUTPUT_CLASSES = 2
+    #
+    # Fake background experiment
+    # target_classes = {"Background": 0,
+    #                   "BackgroundFake": 1,
+    #                   "Pocillopora": 2,
+    #                   "Pocillopora_eydouxi": 3,
+    #                   "Porite_massive": 4,
+    #                   "Montipora_plate/flabellata": 5,
+    #                   "Montipora_crust/patula": 6
+    #                   }
+    # OUTPUT_CLASSES = 7
+    #
+    # biological split
     # target_classes = {"Background": 0,
     #                   "Pocillopora": 1,
     #                   "Pocillopora_damicornis": 2,
@@ -576,20 +617,20 @@ def main():
     #                   "Montipora_crust/patula": 7,
     #                   "Montipora_capitata": 8
     #                   }
-
-
+    # OUTPUT_CLASSES = 9
 
     # DATASET FOLDERS
-    root_dir = "D:\\ten-orthos-scripps"
+    root_dir = "C:\\porite"
+    DATASET_NAME = os.path.split(root_dir)[1]
 
-    images_dir_train = root_dir + '/' + "train_im"
-    labels_dir_train = root_dir + '/' + "train_lab"
+    images_dir_train = os.path.join(root_dir, "train_im")
+    labels_dir_train = os.path.join(root_dir, "train_lab")
 
-    images_dir_val = root_dir + '/' + "val_im"
-    labels_dir_val = root_dir + '/' + "val_lab"
+    images_dir_val = os.path.join(root_dir, "val_im")
+    labels_dir_val = os.path.join(root_dir, "val_lab")
 
-    images_dir_test = root_dir + '/' + "test_im"
-    labels_dir_test = root_dir + '/' + "test_lab"
+    images_dir_test = os.path.join(root_dir, "test_im")
+    labels_dir_test = os.path.join(root_dir, "test_lab")
 
     # LOAD EXPERIMENTS
 
@@ -615,8 +656,6 @@ def main():
     #experiments = pd.read_csv("experiments.csv")
     experiments = pd.read_csv("mini.csv")
 
-    NCLASSES = len(target_classes)  # number of classes
-
     ##### RUN THE EXPERIMENTS
     for index, row in experiments.iterrows():
 
@@ -627,9 +666,7 @@ def main():
         BATCH_SIZE = row["BATCH_SIZE"]
         BATCH_MULTIPLIER = row["BATCH_MULTIPLIER"]
         LOSS_TO_USE = row["LOSS_TO_USE"]
-        # quando comincia a cambiare, 20 = alla epoch 20 comincia a cambiare
         GDL_BOUNDARY_EPOCH_SWITCH = row["GDL_BOUNDARY_EPOCH_SWITCH"]
-        # in quante epoche completa la transizione (separate)
         GDL_BOUNDARY_EPOCH_TRANSITION = row["GDL_BOUNDARY_EPOCH_TRANSITION"]
         TVERSKY_ALPHA = row["TVERSKY_ALPHA"]
         TVERSKY_GAMMA = row["TVERSKY_GAMMA"]
@@ -643,28 +680,24 @@ def main():
             params = params + "_ALPHA=" + str(TVERSKY_ALPHA) + "_GAMMA=" + str(TVERSKY_GAMMA)
 
         params = params + "_OPT=" + OPTIMIZER
-
-        network_name = "DEEPLAB_" + params + ".net"
-
-        experiment_name = "_EXP_" + params
-
-        save_classifier_as = network_name + ".json"
+        network_name = "DEEPLAB_" + params + "-" + DATASET_NAME + ".net"
+        experiment_name = "_EXP_" + params + "-" + DATASET_NAME
         classifier_name = "Coral 6-classes"
 
         ##### TRAINING
         trainingNetwork(images_dir_train, labels_dir_train, images_dir_val, labels_dir_val,
-                        dictionary, target_classes, num_classes=NCLASSES, save_network_as=network_name,
-                        save_classifier_as=save_classifier_as, classifier_name=classifier_name,
+                        dictionary, target_classes, output_classes=OUTPUT_CLASSES,
+                        save_network_as=network_name, classifier_name=classifier_name,
                         epochs=NEPOCHS, batch_sz=BATCH_SIZE, batch_mult=BATCH_MULTIPLIER,
                         validation_frequency=VAL_FREQ, loss_to_use=LOSS_TO_USE,
                         epochs_switch=GDL_BOUNDARY_EPOCH_SWITCH, epochs_transition=GDL_BOUNDARY_EPOCH_TRANSITION,
                         learning_rate=LR, L2_penalty=L2, tversky_alpha=TVERSKY_ALPHA, tversky_gamma=TVERSKY_GAMMA,
-                        optimiz=OPTIMIZER, flagShuffle=True, experiment_name=experiment_name)
+                        optimiz=OPTIMIZER, flag_shuffle=True, flag_training_accuracy=False, experiment_name=experiment_name)
 
         # service function to compute the rangee of the Boundary loss on the training and the validation set
         # computeBoundaryLossRange(images_dir_train, labels_dir_train, images_dir_val, labels_dir_val,
-        #                 dictionary, target_classes, num_classes=NCLASSES, save_network_as=network_name,
-        #                 save_classifier_as=save_classifier_as, classifier_name=classifier_name,
+        #                 dictionary, target_classes, output_classes=OUTPUT_CLASSES,
+        #                 save_network_as=network_name, classifier_name=classifier_name,
         #                 epochs=NEPOCHS, batch_sz=BATCH_SIZE, batch_mult=BATCH_MULTIPLIER,
         #                 validation_frequency=VAL_FREQ, loss_to_use=LOSS_TO_USE,
         #                 epochs_switch=GDL_BOUNDARY_EPOCH_SWITCH, epochs_transition=GDL_BOUNDARY_EPOCH_TRANSITION,
@@ -672,14 +705,15 @@ def main():
         #                 optimiz=OPTIMIZER, flagShuffle=True, experiment_name=experiment_name)
 
         ##### TEST
-
         output_folder = os.path.join("temp", params)
 
         if not os.path.exists(output_folder):
             os.makedirs(output_folder)
 
-        testNetwork(images_dir_test, labels_dir_test, dictionary,  target_classes, NCLASSES, save_classifier_as,
-                    network_name, output_folder)
+        # network_name = "DEEPLAB_LR=5e-05_L2=0.0005_BS=4x4_loss=CROSSENTROPY_OPT=ADAM-b.net"
+        #
+        #testNetwork(images_dir_test, labels_dir_test, dictionary,  target_classes, NCLASSES, save_classifier_as,
+        #            network_name, output_folder)
 
 
 if __name__ == '__main__':

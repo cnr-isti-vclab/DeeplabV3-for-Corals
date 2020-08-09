@@ -1,4 +1,5 @@
 from __future__ import print_function, division
+import sys
 import os
 import numpy as np
 from PIL import Image as PILimage
@@ -27,7 +28,7 @@ class CoralsDataset(Dataset):
 
     """Corals dataset."""
 
-    def __init__(self, input_images_dir, input_labels_dir, dictionary, target_class, num_classes):
+    def __init__(self, input_images_dir, input_labels_dir, dictionary, target_class):
         """
         :param input_images_dir: folder containing the images
         :param input_labels_dir: folder containing the labels
@@ -41,7 +42,7 @@ class CoralsDataset(Dataset):
         self.images_names = [os.path.basename(x) for x in glob.glob(os.path.join(input_images_dir, '*.png'))]
         self.dict_colors = dictionary
         self.dict_target = target_class
-        self.num_classes = num_classes
+        self.num_classes = len(target_class)
 
         # if background does not exists it is added
         self.dict_colors["Background"] = [0, 0, 0]
@@ -250,7 +251,9 @@ class CoralsDataset(Dataset):
     def computeWeights(self):
 
         class_sample_count = np.zeros(self.num_classes)
-        for image_name in self.images_names:
+        N = len(self.images_names)
+        print(" ")
+        for i, image_name in enumerate(self.images_names):
 
             label_filename = os.path.join(self.labels_dir, image_name)
             imglbl = PILimage.open(label_filename)
@@ -264,19 +267,19 @@ class CoralsDataset(Dataset):
             labels = self.colorsToLabels(data_crop)
             existing_labels, counts = np.unique(labels, return_counts=True)
 
-            for i in range(len(existing_labels)):
-                class_sample_count[existing_labels[i]] += counts[i]
+            for j in range(len(existing_labels)):
+                class_sample_count[existing_labels[j]] += counts[j]
+
+            sys.stdout.write("\rComputing frequencies... %.2f"% ((i * 100.0) / float(N)))
 
         true_dict_target = dict()
         tot = np.sum(class_sample_count)
         temp_weights = []
 
-        i = 0
         for key in self.dict_target.keys():
             index = self.dict_target[key]
             if class_sample_count[index] > 0:
-                true_dict_target[key] = i
-                i = i + 1
+                true_dict_target[key] = index
                 temp_weights.append(tot / class_sample_count[index])
 
         self.num_classes = len(temp_weights)
@@ -287,7 +290,9 @@ class CoralsDataset(Dataset):
     def computeAverage(self):
 
         sum = np.zeros((self.CROP_SIZE, self.CROP_SIZE, 3), dtype=np.float)
-        for image_name in self.images_names:
+        N = len(self.images_names)
+        print(" ")
+        for i, image_name in enumerate(self.images_names):
 
             img_filename = os.path.join(self.images_dir, image_name)
             img = PILimage.open(img_filename)
@@ -299,11 +304,12 @@ class CoralsDataset(Dataset):
             data_crop = data[oy:oy + self.CROP_SIZE, ox:ox + self.CROP_SIZE]
             sum += data_crop
 
+            sys.stdout.write("\rComputing average... %.2f"% ((i * 100.0) / float(N)))
+
         img_mean = sum / len(self.images_names)
         self.dataset_average[0] = np.mean(img_mean[:,:,0]) / 255.0
         self.dataset_average[1] = np.mean(img_mean[:,:,1]) / 255.0
         self.dataset_average[2] = np.mean(img_mean[:,:,2]) / 255.0
-
 
     def colorsToLabels(self, data):
         """
