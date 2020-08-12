@@ -272,6 +272,7 @@ class CoralsDataset(Dataset):
 
             sys.stdout.write("\rComputing frequencies... %.2f"% ((i * 100.0) / float(N)))
 
+        # update target classes with the ones found in the dataset
         true_dict_target = dict()
         tot = np.sum(class_sample_count)
         temp_weights = []
@@ -294,8 +295,6 @@ class CoralsDataset(Dataset):
                 for key in true_dict_target.keys():
                     if true_dict_target[key] == min_value:
                         true_dict_target[key] = index
-
-
 
         self.num_classes = len(temp_weights)
         self.weights = np.array(temp_weights)
