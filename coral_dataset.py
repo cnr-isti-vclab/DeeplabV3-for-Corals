@@ -282,6 +282,21 @@ class CoralsDataset(Dataset):
                 true_dict_target[key] = index
                 temp_weights.append(tot / class_sample_count[index])
 
+        # set indices progressively
+        n = len(true_dict_target.keys())
+        for index in range(n):
+            if not index in true_dict_target.values():
+                min_value = 10000
+                for value in true_dict_target.values():
+                    if value > index and value < min_value:
+                        min_value = value
+
+                for key in true_dict_target.keys():
+                    if true_dict_target[key] == min_value:
+                        true_dict_target[key] = index
+
+
+
         self.num_classes = len(temp_weights)
         self.weights = np.array(temp_weights)
         self.dict_target = true_dict_target
