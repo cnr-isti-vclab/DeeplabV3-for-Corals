@@ -80,7 +80,9 @@ def evaluateNetwork(dataset, dataloader, loss_to_use, CEloss, w_for_GDL, tversky
         for k, data in enumerate(dataloader):
 
             batch_images, labels_batch, names = data['image'], data['labels'], data['name']
-            print(names)
+
+            txt = "Evaluation running.. {:.2f} % \r".format(((100.0 * k) / len(dataloader)))
+            sys.stdout.write(txt)
 
             if USE_CUDA:
                 batch_images = batch_images.to(device)
@@ -109,7 +111,6 @@ def evaluateNetwork(dataset, dataloader, loss_to_use, CEloss, w_for_GDL, tversky
 
             # CONFUSION MATRIX, PREDICTIONS ARE PER-COLUMN, GROUND TRUTH CLASSES ARE PER-ROW
             for i in range(batch_size):
-                print(i)
                 pred_index = pred_cpu[i].numpy().ravel()
                 true_index = labels_cpu[i].numpy().ravel()
                 confmat = confusion_matrix(true_index, pred_index, class_indices)
@@ -555,6 +556,7 @@ def testNetwork(images_folder, labels_folder, dictionary, target_classes, networ
     net.load_state_dict(torch.load(network_filename))
     print("Weights loaded.")
 
+    print("Test..")
     metrics_test, loss = evaluateNetwork(datasetTest, dataloaderTest, "NONE", None, [0.0], 0.0, 0.0, 0.0, 0, 0, 0,
                                          output_classes, net, True, output_folder)
     metrics_filename = network_filename[:len(network_filename) - 4] + "-test-metrics.txt"
@@ -577,13 +579,13 @@ def main():
     # OUTPUT_CLASSES = 6
 
     # porite binary classifier
-    target_classes = {
-        "Background": 0,
-        "Porites_branching": 1,
-        "Porite_massive": 1,
-        "Porites_rus": 1
-        }
-    OUTPUT_CLASSES = 2
+    # target_classes = {
+    #     "Background": 0,
+    #     "Porites_branching": 1,
+    #     "Porite_massive": 1,
+    #     "Porites_rus": 1
+    #     }
+    # OUTPUT_CLASSES = 2
 
     # pocillopora binary classifier
     # target_classes = {
@@ -594,7 +596,7 @@ def main():
     #     "Pocillopora_damicornis": 1
     #     }
     # OUTPUT_CLASSES = 2
-    #
+
     # Fake background experiment
     # target_classes = {"Background": 0,
     #                   "BackgroundFake": 1,
@@ -619,18 +621,6 @@ def main():
     #                   }
     # OUTPUT_CLASSES = 9
 
-    # DATASET FOLDERS
-    root_dir = "C:\\porite"
-    DATASET_NAME = os.path.split(root_dir)[1]
-
-    images_dir_train = os.path.join(root_dir, "train_im")
-    labels_dir_train = os.path.join(root_dir, "train_lab")
-
-    images_dir_val = os.path.join(root_dir, "val_im")
-    labels_dir_val = os.path.join(root_dir, "val_lab")
-
-    images_dir_test = os.path.join(root_dir, "test_im")
-    labels_dir_test = os.path.join(root_dir, "test_lab")
 
     # LOAD EXPERIMENTS
 
@@ -659,6 +649,19 @@ def main():
     ##### RUN THE EXPERIMENTS
     for index, row in experiments.iterrows():
 
+        # DATASET FOLDERS
+        root_dir = row["ROOTDIR"]
+        DATASET_NAME = os.path.split(root_dir)[1]
+
+        images_dir_train = os.path.join(os.path.join(root_dir, "training"), "images")
+        labels_dir_train = os.path.join(os.path.join(root_dir, "training"), "labels")
+
+        images_dir_val = os.path.join(os.path.join(root_dir, "validation"), "images")
+        labels_dir_val = os.path.join(os.path.join(root_dir, "validation"), "labels")
+
+        images_dir_test = os.path.join(os.path.join(root_dir, "test"), "images")
+        labels_dir_test = os.path.join(os.path.join(root_dir, "test"), "labels")
+
         LR = row["LR"]
         L2 = row["L2"]
         NEPOCHS = row["NEPOCHS"]
@@ -682,7 +685,38 @@ def main():
         params = params + "_OPT=" + OPTIMIZER
         network_name = "DEEPLAB_" + params + "-" + DATASET_NAME + ".net"
         experiment_name = "_EXP_" + params + "-" + DATASET_NAME
-        classifier_name = "Coral 6-classes"
+        classifier_name = "customclassifier"
+
+
+        if "FLI2013" in root_dir:
+            target_classes = {"Background": 0,
+                              "Pocillopora": 1,
+                              "Pocillopora_eydouxi": 2,
+                              "Porite_massive": 3,
+                              "Montipora_plate/flabellata": 4,
+                              "Montipora_crust/patula": 5
+                              }
+            OUTPUT_CLASSES = 6
+
+        if "MIL-CMO1" in root_dir:
+            target_classes = {"Background": 0,
+                              "Pocillopora": 1,
+                              "Pocillopora_zelli": 2,
+                              "Pocillopora_eydouxi": 3,
+                              "Porite_massive": 4,
+                              "Montipora_plate/flabellata": 5,
+                              "Montipora_crust/patula": 6,
+                              }
+            OUTPUT_CLASSES = 7
+
+
+        if "STA2013" in root_dir:
+            target_classes = {"Background": 0,
+                              "Pocillopora": 1,
+                              "Porite_massive": 2
+                              }
+            OUTPUT_CLASSES = 3
+
 
         ##### TRAINING
         trainingNetwork(images_dir_train, labels_dir_train, images_dir_val, labels_dir_val,
@@ -694,16 +728,6 @@ def main():
                         learning_rate=LR, L2_penalty=L2, tversky_alpha=TVERSKY_ALPHA, tversky_gamma=TVERSKY_GAMMA,
                         optimiz=OPTIMIZER, flag_shuffle=True, flag_training_accuracy=False, experiment_name=experiment_name)
 
-        # service function to compute the rangee of the Boundary loss on the training and the validation set
-        # computeBoundaryLossRange(images_dir_train, labels_dir_train, images_dir_val, labels_dir_val,
-        #                 dictionary, target_classes, output_classes=OUTPUT_CLASSES,
-        #                 save_network_as=network_name, classifier_name=classifier_name,
-        #                 epochs=NEPOCHS, batch_sz=BATCH_SIZE, batch_mult=BATCH_MULTIPLIER,
-        #                 validation_frequency=VAL_FREQ, loss_to_use=LOSS_TO_USE,
-        #                 epochs_switch=GDL_BOUNDARY_EPOCH_SWITCH, epochs_transition=GDL_BOUNDARY_EPOCH_TRANSITION,
-        #                 learning_rate=LR, L2_penalty=L2, tversky_alpha=TVERSKY_ALPHA, tversky_gamma=TVERSKY_GAMMA,
-        #                 optimiz=OPTIMIZER, flagShuffle=True, experiment_name=experiment_name)
-
         ##### TEST
         output_folder = os.path.join("temp", params)
 
@@ -711,10 +735,7 @@ def main():
             os.makedirs(output_folder)
 
         # network_name = "DEEPLAB_LR=5e-05_L2=0.0005_BS=4x4_loss=CROSSENTROPY_OPT=ADAM-b.net"
-        #
-        #testNetwork(images_dir_test, labels_dir_test, dictionary,  target_classes, NCLASSES, save_classifier_as,
-        #            network_name, output_folder)
-
+        testNetwork(images_dir_test, labels_dir_test, dictionary,  target_classes, network_name, output_folder)
 
 if __name__ == '__main__':
     main()
