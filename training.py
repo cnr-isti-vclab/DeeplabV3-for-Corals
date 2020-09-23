@@ -587,15 +587,15 @@ def main():
     #     }
     # OUTPUT_CLASSES = 2
 
-    # pocillopora binary classifier
-    # target_classes = {
-    #     "Background": 0,
-    #     "Pocillopora_zelli": 1,
-    #     "Pocillopora_eydouxi": 1,
-    #     "Pocillopora": 1,
-    #     "Pocillopora_damicornis": 1
-    #     }
-    # OUTPUT_CLASSES = 2
+    #pocillopora binary classifier
+    target_classes = {
+        "Background": 0,
+        "Pocillopora_zelli": 1,
+        "Pocillopora_eydouxi": 1,
+        "Pocillopora": 1,
+        "Pocillopora_damicornis": 1
+        }
+    OUTPUT_CLASSES = 2
 
     # Fake background experiment
     # target_classes = {"Background": 0,
@@ -653,14 +653,25 @@ def main():
         root_dir = row["ROOTDIR"]
         DATASET_NAME = os.path.split(root_dir)[1]
 
-        images_dir_train = os.path.join(os.path.join(root_dir, "training"), "images")
-        labels_dir_train = os.path.join(os.path.join(root_dir, "training"), "labels")
+        # TagLab sub-folder structure
+        # images_dir_train = os.path.join(os.path.join(root_dir, "training"), "images")
+        # labels_dir_train = os.path.join(os.path.join(root_dir, "training"), "labels")
+        #
+        # images_dir_val = os.path.join(os.path.join(root_dir, "validation"), "images")
+        # labels_dir_val = os.path.join(os.path.join(root_dir, "validation"), "labels")
+        #
+        # images_dir_test = os.path.join(os.path.join(root_dir, "test"), "images")
+        # labels_dir_test = os.path.join(os.path.join(root_dir, "test"), "labels")
 
-        images_dir_val = os.path.join(os.path.join(root_dir, "validation"), "images")
-        labels_dir_val = os.path.join(os.path.join(root_dir, "validation"), "labels")
+        images_dir_train = os.path.join(root_dir, "train_im")
+        labels_dir_train = os.path.join(root_dir, "train_lab")
 
-        images_dir_test = os.path.join(os.path.join(root_dir, "test"), "images")
-        labels_dir_test = os.path.join(os.path.join(root_dir, "test"), "labels")
+        images_dir_val = os.path.join(root_dir, "val_im")
+        labels_dir_val = os.path.join(root_dir, "val_lab")
+
+        images_dir_test = os.path.join(root_dir, "test_im")
+        labels_dir_test = os.path.join(root_dir, "test_lab")
+
 
         LR = row["LR"]
         L2 = row["L2"]
